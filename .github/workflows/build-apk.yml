@@ -7,7 +7,8 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
     permissions:
       contents: read
 
@@ -16,24 +17,27 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Configurar Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Verificar Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "=== Plataformas instaladas ==="
+          ls "$ANDROID_HOME/platforms"
+          echo "=== Build Tools instalados ==="
+          ls "$ANDROID_HOME/build-tools"
 
       - name: Configurar Gradle 9.4.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
 
-      - name: Aceitar licenças do Android SDK
-        run: yes | sdkmanager --licenses >/dev/null || true
-
-      - name: Instalar Android SDK API 37
-        run: sdkmanager "platform-tools" "platforms;android-37" "build-tools;37.0.0"
-
-      - name: Compilar APK de teste
-        run: gradle --no-daemon :app:assembleDebug
+      - name: Compilar APK
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
 
       - name: Publicar APK para download
         uses: actions/upload-artifact@v4
