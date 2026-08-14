@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,22 +28,24 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -57,6 +58,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,6 +68,7 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -103,7 +107,18 @@ private fun EstudeNoahTheme(content: @Composable () -> Unit) {
     )
 }
 
-private enum class AppScreen { HOME, SUBJECTS, QUIZ, RESULT, HISTORY }
+private enum class AppScreen {
+    HOME,
+    SUBJECTS,
+    QUIZ,
+    RESULT,
+    HISTORY,
+    PARENT_PIN,
+    PARENT_HOME,
+    PARENT_QUESTIONS,
+    QUESTION_EDITOR,
+    CHANGE_PIN
+}
 
 private enum class Subject(val label: String, val symbol: String) {
     PORTUGUES("Português", "Aa"),
@@ -114,11 +129,23 @@ private enum class Subject(val label: String, val symbol: String) {
 }
 
 private data class Question(
+    val id: String,
     val prompt: String,
     val options: List<String>,
     val correctIndex: Int,
     val explanation: String
 )
+
+private data class CustomQuestion(
+    val id: String,
+    val subject: Subject,
+    val prompt: String,
+    val options: List<String>,
+    val correctIndex: Int,
+    val explanation: String
+) {
+    fun asQuestion() = Question(id, prompt, options, correctIndex, explanation)
+}
 
 private data class HistoryEntry(
     val subject: String,
@@ -130,168 +157,170 @@ private data class HistoryEntry(
 private object QuestionBank {
     private val questions = mapOf(
         Subject.PORTUGUES to listOf(
-            Question(
-                "Qual palavra está escrita corretamente?",
-                listOf("Caza", "Casa", "Cassa", "Kasa"),
-                1,
-                "Casa é escrita com S entre as vogais."
-            ),
-            Question(
-                "Na frase “O menino correu rápido”, qual palavra indica uma ação?",
-                listOf("menino", "rápido", "correu", "o"),
-                2,
-                "“Correu” é o verbo da frase e indica a ação praticada pelo menino."
-            ),
-            Question(
-                "Qual é o plural de “animal”?",
-                listOf("animals", "animales", "animais", "animãos"),
-                2,
-                "O plural correto de animal é animais."
-            ),
-            Question(
-                "Qual sinal usamos normalmente ao final de uma pergunta?",
-                listOf("!", ".", ",", "?"),
-                3,
-                "O ponto de interrogação (?) indica uma pergunta."
-            ),
-            Question(
-                "Em “A bola azul caiu”, qual palavra caracteriza a bola?",
-                listOf("azul", "caiu", "a", "bola"),
-                0,
-                "“Azul” informa uma característica da bola."
-            )
+            Question("pt-1", "Qual palavra está escrita corretamente?", listOf("Caza", "Casa", "Cassa", "Kasa"), 1, "Casa é escrita com S entre as vogais."),
+            Question("pt-2", "Na frase “O menino correu rápido”, qual palavra indica uma ação?", listOf("menino", "rápido", "correu", "o"), 2, "“Correu” é o verbo da frase e indica a ação praticada pelo menino."),
+            Question("pt-3", "Qual é o plural de “animal”?", listOf("animals", "animales", "animais", "animãos"), 2, "O plural correto de animal é animais."),
+            Question("pt-4", "Qual sinal usamos normalmente ao final de uma pergunta?", listOf("!", ".", ",", "?"), 3, "O ponto de interrogação (?) indica uma pergunta."),
+            Question("pt-5", "Em “A bola azul caiu”, qual palavra caracteriza a bola?", listOf("azul", "caiu", "a", "bola"), 0, "“Azul” informa uma característica da bola.")
         ),
         Subject.MATEMATICA to listOf(
-            Question(
-                "Quanto é 8 + 7?",
-                listOf("13", "14", "15", "16"),
-                2,
-                "8 + 7 = 15."
-            ),
-            Question(
-                "Quanto é 6 × 4?",
-                listOf("10", "20", "24", "28"),
-                2,
-                "6 grupos de 4 formam 24."
-            ),
-            Question(
-                "Qual número vem imediatamente antes de 100?",
-                listOf("98", "99", "101", "90"),
-                1,
-                "O número imediatamente anterior a 100 é 99."
-            ),
-            Question(
-                "Uma dúzia corresponde a quantas unidades?",
-                listOf("6", "10", "12", "20"),
-                2,
-                "Uma dúzia é um conjunto de 12 unidades."
-            ),
-            Question(
-                "Se você tinha 20 figurinhas e deu 5, com quantas ficou?",
-                listOf("10", "15", "20", "25"),
-                1,
-                "20 − 5 = 15."
-            )
+            Question("mat-1", "Quanto é 8 + 7?", listOf("13", "14", "15", "16"), 2, "8 + 7 = 15."),
+            Question("mat-2", "Quanto é 6 × 4?", listOf("10", "20", "24", "28"), 2, "6 grupos de 4 formam 24."),
+            Question("mat-3", "Qual número vem imediatamente antes de 100?", listOf("98", "99", "101", "90"), 1, "O número imediatamente anterior a 100 é 99."),
+            Question("mat-4", "Uma dúzia corresponde a quantas unidades?", listOf("6", "10", "12", "20"), 2, "Uma dúzia é um conjunto de 12 unidades."),
+            Question("mat-5", "Se você tinha 20 figurinhas e deu 5, com quantas ficou?", listOf("10", "15", "20", "25"), 1, "20 − 5 = 15.")
         ),
         Subject.CIENCIAS to listOf(
-            Question(
-                "Qual destes animais é um mamífero?",
-                listOf("Galinha", "Cachorro", "Tartaruga", "Sardinha"),
-                1,
-                "O cachorro é um mamífero: nasce do corpo da mãe e, quando filhote, mama."
-            ),
-            Question(
-                "Qual parte da planta normalmente absorve água do solo?",
-                listOf("Raiz", "Flor", "Fruto", "Folha"),
-                0,
-                "As raízes fixam a planta e absorvem água e sais minerais do solo."
-            ),
-            Question(
-                "Qual destes elementos é essencial para respirarmos?",
-                listOf("Areia", "Oxigênio", "Plástico", "Vidro"),
-                1,
-                "Nosso corpo utiliza o oxigênio presente no ar durante a respiração."
-            ),
-            Question(
-                "Em qual estado físico a água está quando vira gelo?",
-                listOf("Gasoso", "Líquido", "Sólido", "Vapor"),
-                2,
-                "O gelo é água no estado sólido."
-            ),
-            Question(
-                "Qual astro ilumina naturalmente a Terra durante o dia?",
-                listOf("Lua", "Marte", "Sol", "Saturno"),
-                2,
-                "O Sol é a estrela que fornece luz e calor à Terra."
-            )
+            Question("cie-1", "Qual destes animais é um mamífero?", listOf("Galinha", "Cachorro", "Tartaruga", "Sardinha"), 1, "O cachorro é um mamífero: nasce do corpo da mãe e, quando filhote, mama."),
+            Question("cie-2", "Qual parte da planta normalmente absorve água do solo?", listOf("Raiz", "Flor", "Fruto", "Folha"), 0, "As raízes fixam a planta e absorvem água e sais minerais do solo."),
+            Question("cie-3", "Qual destes elementos é essencial para respirarmos?", listOf("Areia", "Oxigênio", "Plástico", "Vidro"), 1, "Nosso corpo utiliza o oxigênio presente no ar durante a respiração."),
+            Question("cie-4", "Em qual estado físico a água está quando vira gelo?", listOf("Gasoso", "Líquido", "Sólido", "Vapor"), 2, "O gelo é água no estado sólido."),
+            Question("cie-5", "Qual astro ilumina naturalmente a Terra durante o dia?", listOf("Lua", "Marte", "Sol", "Saturno"), 2, "O Sol é a estrela que fornece luz e calor à Terra.")
         ),
         Subject.HISTORIA to listOf(
-            Question(
-                "Para estudar o passado, os historiadores utilizam principalmente:",
-                listOf("fontes históricas", "previsões do tempo", "apenas mapas", "somente números"),
-                0,
-                "Fontes históricas podem ser documentos, objetos, imagens, relatos e muitos outros vestígios."
-            ),
-            Question(
-                "Uma fotografia antiga pode ser considerada:",
-                listOf("um brinquedo", "uma fonte histórica", "um planeta", "uma operação matemática"),
-                1,
-                "Fotografias registram pessoas, lugares e acontecimentos de uma época."
-            ),
-            Question(
-                "Quando organizamos acontecimentos do mais antigo para o mais recente, fazemos uma:",
-                listOf("receita", "linha do tempo", "tabuada", "legenda"),
-                1,
-                "A linha do tempo ajuda a visualizar a ordem cronológica dos acontecimentos."
-            ),
-            Question(
-                "Os relatos de pessoas que viveram um acontecimento são exemplos de:",
-                listOf("fontes orais", "fontes minerais", "formas geométricas", "medidas de massa"),
-                0,
-                "Depoimentos e entrevistas são fontes orais."
-            ),
-            Question(
-                "Estudar a história de uma família ajuda a compreender:",
-                listOf("apenas o futuro", "mudanças e permanências ao longo do tempo", "somente contas", "apenas animais"),
-                1,
-                "A história permite observar o que mudou e o que permaneceu ao longo do tempo."
-            )
+            Question("his-1", "Para estudar o passado, os historiadores utilizam principalmente:", listOf("fontes históricas", "previsões do tempo", "apenas mapas", "somente números"), 0, "Fontes históricas podem ser documentos, objetos, imagens, relatos e muitos outros vestígios."),
+            Question("his-2", "Uma fotografia antiga pode ser considerada:", listOf("um brinquedo", "uma fonte histórica", "um planeta", "uma operação matemática"), 1, "Fotografias registram pessoas, lugares e acontecimentos de uma época."),
+            Question("his-3", "Quando organizamos acontecimentos do mais antigo para o mais recente, fazemos uma:", listOf("receita", "linha do tempo", "tabuada", "legenda"), 1, "A linha do tempo ajuda a visualizar a ordem cronológica dos acontecimentos."),
+            Question("his-4", "Os relatos de pessoas que viveram um acontecimento são exemplos de:", listOf("fontes orais", "fontes minerais", "formas geométricas", "medidas de massa"), 0, "Depoimentos e entrevistas são fontes orais."),
+            Question("his-5", "Estudar a história de uma família ajuda a compreender:", listOf("apenas o futuro", "mudanças e permanências ao longo do tempo", "somente contas", "apenas animais"), 1, "A história permite observar o que mudou e o que permaneceu ao longo do tempo.")
         ),
         Subject.GEOGRAFIA to listOf(
-            Question(
-                "Qual representação mostra a superfície de um lugar vista de cima?",
-                listOf("Mapa", "Poema", "Receita", "Canção"),
-                0,
-                "Mapas representam espaços e ajudam a localizar lugares."
-            ),
-            Question(
-                "Em qual planeta nós vivemos?",
-                listOf("Marte", "Terra", "Vênus", "Júpiter"),
-                1,
-                "Vivemos no planeta Terra."
-            ),
-            Question(
-                "Uma área com muitos prédios, ruas e comércio é geralmente uma paisagem:",
-                listOf("urbana", "marinha", "desértica", "polar"),
-                0,
-                "Paisagens urbanas são marcadas pela concentração de construções e atividades da cidade."
-            ),
-            Question(
-                "Qual ponto cardeal é indicado pela letra N?",
-                listOf("Sul", "Leste", "Oeste", "Norte"),
-                3,
-                "A letra N representa o Norte."
-            ),
-            Question(
-                "Rios, montanhas e vegetação são exemplos de elementos:",
-                listOf("naturais", "digitais", "musicais", "numéricos"),
-                0,
-                "Esses elementos fazem parte da natureza e compõem as paisagens."
-            )
+            Question("geo-1", "Qual representação mostra a superfície de um lugar vista de cima?", listOf("Mapa", "Poema", "Receita", "Canção"), 0, "Mapas representam espaços e ajudam a localizar lugares."),
+            Question("geo-2", "Em qual planeta nós vivemos?", listOf("Marte", "Terra", "Vênus", "Júpiter"), 1, "Vivemos no planeta Terra."),
+            Question("geo-3", "Uma área com muitos prédios, ruas e comércio é geralmente uma paisagem:", listOf("urbana", "marinha", "desértica", "polar"), 0, "Paisagens urbanas são marcadas pela concentração de construções e atividades da cidade."),
+            Question("geo-4", "Qual ponto cardeal é indicado pela letra N?", listOf("Sul", "Leste", "Oeste", "Norte"), 3, "A letra N representa o Norte."),
+            Question("geo-5", "Rios, montanhas e vegetação são exemplos de elementos:", listOf("naturais", "digitais", "musicais", "numéricos"), 0, "Esses elementos fazem parte da natureza e compõem as paisagens.")
         )
     )
 
-    fun get(subject: Subject): List<Question> = questions[subject].orEmpty()
+    fun activity(context: Context, subject: Subject): List<Question> {
+        val custom = CustomQuestionStorage.load(context)
+            .filter { it.subject == subject }
+            .map { it.asQuestion() }
+            .shuffled()
+        val builtIn = questions[subject].orEmpty().shuffled()
+        return (custom + builtIn).take(5)
+    }
+}
+
+private object QuestionJson {
+    fun encode(questions: List<Question>): String {
+        val array = JSONArray()
+        questions.forEach { question ->
+            array.put(
+                JSONObject()
+                    .put("id", question.id)
+                    .put("prompt", question.prompt)
+                    .put("options", JSONArray(question.options))
+                    .put("correctIndex", question.correctIndex)
+                    .put("explanation", question.explanation)
+            )
+        }
+        return array.toString()
+    }
+
+    fun decode(raw: String): List<Question> = runCatching {
+        val array = JSONArray(raw)
+        buildList {
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                val optionArray = item.getJSONArray("options")
+                val options = buildList {
+                    for (j in 0 until optionArray.length()) add(optionArray.getString(j))
+                }
+                add(
+                    Question(
+                        id = item.optString("id", "session-$i"),
+                        prompt = item.getString("prompt"),
+                        options = options,
+                        correctIndex = item.getInt("correctIndex"),
+                        explanation = item.optString("explanation", "")
+                    )
+                )
+            }
+        }
+    }.getOrElse { emptyList() }
+}
+
+private object CustomQuestionStorage {
+    private const val PREFS = "estude_noah_prefs"
+    private const val KEY_CUSTOM = "custom_questions"
+
+    fun load(context: Context): List<CustomQuestion> {
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_CUSTOM, "[]") ?: "[]"
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.getJSONObject(i)
+                    val subject = runCatching { Subject.valueOf(item.getString("subject")) }.getOrNull() ?: continue
+                    val optionArray = item.getJSONArray("options")
+                    val options = buildList {
+                        for (j in 0 until optionArray.length()) add(optionArray.getString(j))
+                    }
+                    if (options.size == 4) {
+                        add(
+                            CustomQuestion(
+                                id = item.getString("id"),
+                                subject = subject,
+                                prompt = item.getString("prompt"),
+                                options = options,
+                                correctIndex = item.getInt("correctIndex"),
+                                explanation = item.optString("explanation", "")
+                            )
+                        )
+                    }
+                }
+            }
+        }.getOrElse { emptyList() }
+    }
+
+    private fun save(context: Context, questions: List<CustomQuestion>) {
+        val array = JSONArray()
+        questions.forEach { question ->
+            array.put(
+                JSONObject()
+                    .put("id", question.id)
+                    .put("subject", question.subject.name)
+                    .put("prompt", question.prompt)
+                    .put("options", JSONArray(question.options))
+                    .put("correctIndex", question.correctIndex)
+                    .put("explanation", question.explanation)
+            )
+        }
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_CUSTOM, array.toString())
+            .apply()
+    }
+
+    fun upsert(context: Context, question: CustomQuestion) {
+        val current = load(context).toMutableList()
+        val index = current.indexOfFirst { it.id == question.id }
+        if (index >= 0) current[index] = question else current.add(0, question)
+        save(context, current)
+    }
+
+    fun delete(context: Context, id: String) {
+        save(context, load(context).filterNot { it.id == id })
+    }
+}
+
+private object ParentStorage {
+    private const val PREFS = "estude_noah_prefs"
+    private const val KEY_PIN = "parent_pin"
+    private const val DEFAULT_PIN = "1234"
+
+    fun getPin(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getString(KEY_PIN, DEFAULT_PIN) ?: DEFAULT_PIN
+
+    fun setPin(context: Context, pin: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_PIN, pin)
+            .apply()
+    }
 }
 
 private object HistoryStorage {
@@ -301,7 +330,6 @@ private object HistoryStorage {
     fun load(context: Context): List<HistoryEntry> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_HISTORY, "[]") ?: "[]"
-
         return runCatching {
             val array = JSONArray(raw)
             buildList {
@@ -358,9 +386,12 @@ private fun EstudeNoahApp() {
     var solved by rememberSaveable { mutableStateOf(false) }
     var feedback by rememberSaveable { mutableStateOf<String?>(null) }
     var finalScore by rememberSaveable { mutableIntStateOf(0) }
+    var activeQuestionsJson by rememberSaveable { mutableStateOf("[]") }
+    var editingQuestionId by rememberSaveable { mutableStateOf<String?>(null) }
 
     val screen = AppScreen.valueOf(screenName)
     val selectedSubject = subjectName?.let { runCatching { Subject.valueOf(it) }.getOrNull() }
+    val activeQuestions = QuestionJson.decode(activeQuestionsJson)
 
     fun goHome() {
         screenName = AppScreen.HOME.name
@@ -370,10 +401,14 @@ private fun EstudeNoahApp() {
         firstAttemptAlreadyUsed = false
         solved = false
         feedback = null
+        activeQuestionsJson = "[]"
+        editingQuestionId = null
     }
 
     fun startSubject(subject: Subject) {
+        val activity = QuestionBank.activity(context, subject)
         subjectName = subject.name
+        activeQuestionsJson = QuestionJson.encode(activity)
         questionIndex = 0
         score = 0
         firstAttemptAlreadyUsed = false
@@ -388,6 +423,11 @@ private fun EstudeNoahApp() {
             AppScreen.QUIZ -> screenName = AppScreen.SUBJECTS.name
             AppScreen.RESULT -> goHome()
             AppScreen.HISTORY -> goHome()
+            AppScreen.PARENT_PIN -> goHome()
+            AppScreen.PARENT_HOME -> goHome()
+            AppScreen.PARENT_QUESTIONS -> screenName = AppScreen.PARENT_HOME.name
+            AppScreen.QUESTION_EDITOR -> screenName = AppScreen.PARENT_QUESTIONS.name
+            AppScreen.CHANGE_PIN -> screenName = AppScreen.PARENT_HOME.name
             AppScreen.HOME -> Unit
         }
     }
@@ -397,74 +437,67 @@ private fun EstudeNoahApp() {
             AppScreen.HOME -> HomeScreen(
                 history = HistoryStorage.load(context),
                 onStart = { screenName = AppScreen.SUBJECTS.name },
-                onHistory = { screenName = AppScreen.HISTORY.name }
+                onHistory = { screenName = AppScreen.HISTORY.name },
+                onParents = { screenName = AppScreen.PARENT_PIN.name }
             )
 
-            AppScreen.SUBJECTS -> SubjectScreen(
-                onBack = ::goHome,
-                onSelect = ::startSubject
-            )
+            AppScreen.SUBJECTS -> SubjectScreen(onBack = ::goHome, onSelect = ::startSubject)
 
             AppScreen.QUIZ -> {
                 val subject = selectedSubject
-                if (subject == null) {
+                val question = activeQuestions.getOrNull(questionIndex)
+                if (subject == null || question == null) {
                     goHome()
                 } else {
-                    val questions = QuestionBank.get(subject)
-                    val question = questions.getOrNull(questionIndex)
-                    if (question == null) {
-                        goHome()
-                    } else {
-                        QuizScreen(
-                            subject = subject,
-                            question = question,
-                            questionNumber = questionIndex + 1,
-                            totalQuestions = questions.size,
-                            solved = solved,
-                            feedback = feedback,
-                            firstAttemptAlreadyUsed = firstAttemptAlreadyUsed,
-                            onBack = { screenName = AppScreen.SUBJECTS.name },
-                            onAnswer = { optionIndex ->
-                                if (!solved) {
-                                    if (optionIndex == question.correctIndex) {
-                                        if (!firstAttemptAlreadyUsed) score += 1
-                                        solved = true
-                                        feedback = "Muito bem! Resposta correta."
-                                    } else {
-                                        firstAttemptAlreadyUsed = true
-                                        feedback = "Ainda não. Tente novamente."
-                                    }
-                                }
-                            },
-                            onNext = {
-                                if (questionIndex == questions.lastIndex) {
-                                    finalScore = score
-                                    HistoryStorage.add(
-                                        context,
-                                        HistoryEntry(
-                                            subject = subject.label,
-                                            score = score,
-                                            total = questions.size,
-                                            timestamp = System.currentTimeMillis()
-                                        )
-                                    )
-                                    screenName = AppScreen.RESULT.name
+                    QuizScreen(
+                        subject = subject,
+                        question = question,
+                        questionNumber = questionIndex + 1,
+                        totalQuestions = activeQuestions.size,
+                        solved = solved,
+                        feedback = feedback,
+                        firstAttemptAlreadyUsed = firstAttemptAlreadyUsed,
+                        onBack = { screenName = AppScreen.SUBJECTS.name },
+                        onAnswer = { optionIndex ->
+                            if (!solved) {
+                                if (optionIndex == question.correctIndex) {
+                                    if (!firstAttemptAlreadyUsed) score += 1
+                                    solved = true
+                                    feedback = "Muito bem! Resposta correta."
                                 } else {
-                                    questionIndex += 1
-                                    firstAttemptAlreadyUsed = false
-                                    solved = false
-                                    feedback = null
+                                    firstAttemptAlreadyUsed = true
+                                    feedback = "Ainda não. Tente novamente."
                                 }
                             }
-                        )
-                    }
+                        },
+                        onNext = {
+                            if (questionIndex == activeQuestions.lastIndex) {
+                                finalScore = score
+                                HistoryStorage.add(
+                                    context,
+                                    HistoryEntry(
+                                        subject = subject.label,
+                                        score = score,
+                                        total = activeQuestions.size,
+                                        timestamp = System.currentTimeMillis()
+                                    )
+                                )
+                                screenName = AppScreen.RESULT.name
+                            } else {
+                                questionIndex += 1
+                                firstAttemptAlreadyUsed = false
+                                solved = false
+                                feedback = null
+                            }
+                        }
+                    )
                 }
             }
 
             AppScreen.RESULT -> ResultScreen(
                 subject = selectedSubject,
                 score = finalScore,
-                total = selectedSubject?.let { QuestionBank.get(it).size } ?: 5,
+                total = activeQuestions.size.coerceAtLeast(1),
                 onAgain = { screenName = AppScreen.SUBJECTS.name },
                 onHome = ::goHome,
                 onHistory = { screenName = AppScreen.HISTORY.name }
@@ -478,6 +511,61 @@ private fun EstudeNoahApp() {
                     screenName = AppScreen.HOME.name
                 }
             )
+
+            AppScreen.PARENT_PIN -> ParentPinScreen(
+                expectedPin = ParentStorage.getPin(context),
+                onBack = ::goHome,
+                onSuccess = { screenName = AppScreen.PARENT_HOME.name }
+            )
+
+            AppScreen.PARENT_HOME -> ParentHomeScreen(
+                questions = CustomQuestionStorage.load(context),
+                onBack = ::goHome,
+                onNewQuestion = {
+                    editingQuestionId = null
+                    screenName = AppScreen.QUESTION_EDITOR.name
+                },
+                onManage = { screenName = AppScreen.PARENT_QUESTIONS.name },
+                onChangePin = { screenName = AppScreen.CHANGE_PIN.name }
+            )
+
+            AppScreen.PARENT_QUESTIONS -> ParentQuestionsScreen(
+                initialQuestions = CustomQuestionStorage.load(context),
+                onBack = { screenName = AppScreen.PARENT_HOME.name },
+                onNew = {
+                    editingQuestionId = null
+                    screenName = AppScreen.QUESTION_EDITOR.name
+                },
+                onEdit = { id ->
+                    editingQuestionId = id
+                    screenName = AppScreen.QUESTION_EDITOR.name
+                },
+                onDelete = { id -> CustomQuestionStorage.delete(context, id) }
+            )
+
+            AppScreen.QUESTION_EDITOR -> {
+                val editing = editingQuestionId?.let { id ->
+                    CustomQuestionStorage.load(context).firstOrNull { it.id == id }
+                }
+                QuestionEditorScreen(
+                    editing = editing,
+                    onBack = { screenName = AppScreen.PARENT_QUESTIONS.name },
+                    onSave = { question ->
+                        CustomQuestionStorage.upsert(context, question)
+                        editingQuestionId = null
+                        screenName = AppScreen.PARENT_QUESTIONS.name
+                    }
+                )
+            }
+
+            AppScreen.CHANGE_PIN -> ChangePinScreen(
+                currentPin = ParentStorage.getPin(context),
+                onBack = { screenName = AppScreen.PARENT_HOME.name },
+                onSave = { pin ->
+                    ParentStorage.setPin(context, pin)
+                    screenName = AppScreen.PARENT_HOME.name
+                }
+            )
         }
     }
 }
@@ -486,13 +574,11 @@ private fun EstudeNoahApp() {
 private fun HomeScreen(
     history: List<HistoryEntry>,
     onStart: () -> Unit,
-    onHistory: () -> Unit
+    onHistory: () -> Unit,
+    onParents: () -> Unit
 ) {
     BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .padding(24.dp),
+        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
         val wide = maxWidth >= 700.dp
@@ -507,20 +593,18 @@ private fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     history = history,
                     onStart = onStart,
-                    onHistory = onHistory
+                    onHistory = onHistory,
+                    onParents = onParents
                 )
             }
         } else {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 620.dp)
-                    .verticalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth().widthIn(max = 620.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 WelcomeBlock()
                 Spacer(Modifier.height(28.dp))
-                HomeActions(history = history, onStart = onStart, onHistory = onHistory)
+                HomeActions(history = history, onStart = onStart, onHistory = onHistory, onParents = onParents)
             }
         }
     }
@@ -528,33 +612,14 @@ private fun HomeScreen(
 
 @Composable
 private fun WelcomeBlock(modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier
-                .size(110.dp)
-                .background(BlueSoft, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(modifier = Modifier.size(110.dp).background(BlueSoft, CircleShape), contentAlignment = Alignment.Center) {
             Text("N", fontSize = 54.sp, fontWeight = FontWeight.Black, color = Blue)
         }
         Spacer(Modifier.height(20.dp))
-        Text(
-            "Estude, Noah!",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Black,
-            color = Ink,
-            textAlign = TextAlign.Center
-        )
+        Text("Estude, Noah!", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black, color = Ink, textAlign = TextAlign.Center)
         Spacer(Modifier.height(8.dp))
-        Text(
-            "Cinco questões por vez. Um passo de cada vez.",
-            style = MaterialTheme.typography.titleMedium,
-            color = Muted,
-            textAlign = TextAlign.Center
-        )
+        Text("Cinco questões por vez. Um passo de cada vez.", style = MaterialTheme.typography.titleMedium, color = Muted, textAlign = TextAlign.Center)
     }
 }
 
@@ -563,37 +628,26 @@ private fun HomeActions(
     history: List<HistoryEntry>,
     onStart: () -> Unit,
     onHistory: () -> Unit,
+    onParents: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Button(
-            onClick = onStart,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp),
-            shape = RoundedCornerShape(18.dp)
-        ) {
+        Button(onClick = onStart, modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(18.dp)) {
             Text("Começar atividade", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(12.dp))
-        OutlinedButton(
-            onClick = onHistory,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(58.dp),
-            shape = RoundedCornerShape(18.dp)
-        ) {
+        OutlinedButton(onClick = onHistory, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(18.dp)) {
             Text("Histórico", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.height(6.dp))
+        TextButton(onClick = onParents, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            Text("Área dos Pais", color = Muted, fontWeight = FontWeight.SemiBold)
         }
 
         if (history.isNotEmpty()) {
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(18.dp))
             val last = history.first()
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(20.dp)) {
                     Text("Última atividade", color = Muted, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(6.dp))
@@ -607,53 +661,32 @@ private fun HomeActions(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SubjectScreen(
-    onBack: () -> Unit,
-    onSelect: (Subject) -> Unit
-) {
+private fun SubjectScreen(onBack: () -> Unit, onSelect: (Subject) -> Unit) {
     Scaffold(
         containerColor = Cream,
         topBar = {
             TopAppBar(
                 title = { Text("Escolha a matéria", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    TextButton(onClick = onBack) { Text("← Voltar") }
-                },
+                navigationIcon = { TextButton(onClick = onBack) { Text("← Voltar") } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Cream)
             )
         }
     ) { padding ->
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(24.dp)
-        ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp)) {
             val cardWidth = if (maxWidth >= 700.dp) 280.dp else maxWidth
             FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopCenter),
+                modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
                 horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Subject.entries.forEach { subject ->
                     Card(
-                        modifier = Modifier
-                            .width(cardWidth.coerceAtMost(320.dp))
-                            .height(150.dp)
-                            .clickable { onSelect(subject) },
+                        modifier = Modifier.width(cardWidth.coerceAtMost(320.dp)).height(150.dp).clickable { onSelect(subject) },
                         shape = RoundedCornerShape(24.dp),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(20.dp),
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
+                        Column(modifier = Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(subject.symbol, fontSize = 32.sp, color = Blue, fontWeight = FontWeight.Black)
                             Spacer(Modifier.height(10.dp))
                             Text(subject.label, fontSize = 21.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
@@ -679,39 +712,24 @@ private fun QuizScreen(
     onAnswer: (Int) -> Unit,
     onNext: () -> Unit
 ) {
-    val wrongSelections = remember(questionNumber) { mutableStateListOf<Int>() }
+    val wrongSelections = remember(question.id) { mutableStateListOf<Int>() }
 
     Scaffold(
         containerColor = Cream,
         topBar = {
             TopAppBar(
                 title = { Text(subject.label, fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    TextButton(onClick = onBack) { Text("← Matérias") }
-                },
+                navigationIcon = { TextButton(onClick = onBack) { Text("← Matérias") } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Cream)
             )
         }
     ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            contentAlignment = Alignment.TopCenter
-        ) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp, vertical = 12.dp), contentAlignment = Alignment.TopCenter) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 820.dp)
-                    .verticalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth().widthIn(max = 820.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Questão $questionNumber de $totalQuestions", color = Muted, fontWeight = FontWeight.Bold)
                     Text("${((questionNumber - 1) * 100 / totalQuestions)}%", color = Muted)
                 }
@@ -719,18 +737,8 @@ private fun QuizScreen(
                 ProgressDots(current = questionNumber, total = totalQuestions)
                 Spacer(Modifier.height(24.dp))
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(24.dp)
-                ) {
-                    Text(
-                        question.prompt,
-                        modifier = Modifier.padding(26.dp),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        lineHeight = 34.sp
-                    )
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(24.dp)) {
+                    Text(question.prompt, modifier = Modifier.padding(26.dp), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, lineHeight = 34.sp)
                 }
                 Spacer(Modifier.height(18.dp))
 
@@ -747,29 +755,17 @@ private fun QuizScreen(
                         wasWrong -> Red
                         else -> Ink
                     }
-
                     Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp)
-                            .clickable(enabled = !solved && !wasWrong) {
-                                if (index != question.correctIndex) wrongSelections.add(index)
-                                onAnswer(index)
-                            },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).clickable(enabled = !solved && !wasWrong) {
+                            if (index != question.correctIndex) wrongSelections.add(index)
+                            onAnswer(index)
+                        },
                         colors = CardDefaults.cardColors(containerColor = containerColor),
                         shape = RoundedCornerShape(18.dp),
                         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(18.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .background(BlueSoft, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
+                        Row(modifier = Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(38.dp).background(BlueSoft, CircleShape), contentAlignment = Alignment.Center) {
                                 Text(('A'.code + index).toChar().toString(), color = Blue, fontWeight = FontWeight.Black)
                             }
                             Spacer(Modifier.width(14.dp))
@@ -780,22 +776,18 @@ private fun QuizScreen(
 
                 if (feedback != null) {
                     Spacer(Modifier.height(14.dp))
-                    val success = solved
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = if (success) GreenSoft else RedSoft),
+                        colors = CardDefaults.cardColors(containerColor = if (solved) GreenSoft else RedSoft),
                         shape = RoundedCornerShape(18.dp)
                     ) {
                         Column(Modifier.padding(18.dp)) {
-                            Text(
-                                feedback,
-                                color = if (success) Green else Red,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp
-                            )
-                            if (success) {
-                                Spacer(Modifier.height(6.dp))
-                                Text(question.explanation, color = Ink)
+                            Text(feedback, color = if (solved) Green else Red, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            if (solved) {
+                                if (question.explanation.isNotBlank()) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(question.explanation, color = Ink)
+                                }
                                 if (firstAttemptAlreadyUsed) {
                                     Spacer(Modifier.height(6.dp))
                                     Text("Você chegou à resposta. Na pontuação, conta o primeiro palpite.", color = Muted)
@@ -807,18 +799,8 @@ private fun QuizScreen(
 
                 if (solved) {
                     Spacer(Modifier.height(18.dp))
-                    Button(
-                        onClick = onNext,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(58.dp),
-                        shape = RoundedCornerShape(18.dp)
-                    ) {
-                        Text(
-                            if (questionNumber == totalQuestions) "Ver resultado" else "Próxima questão",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                    Button(onClick = onNext, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(18.dp)) {
+                        Text(if (questionNumber == totalQuestions) "Ver resultado" else "Próxima questão", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     }
                 }
                 Spacer(Modifier.height(28.dp))
@@ -832,13 +814,8 @@ private fun ProgressDots(current: Int, total: Int) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         repeat(total) { index ->
             Box(
-                modifier = Modifier
-                    .height(8.dp)
-                    .width(if (index + 1 == current) 38.dp else 18.dp)
-                    .background(
-                        if (index + 1 <= current) Blue else Color(0xFFD7DCE8),
-                        RoundedCornerShape(99.dp)
-                    )
+                modifier = Modifier.height(8.dp).width(if (index + 1 == current) 38.dp else 18.dp)
+                    .background(if (index + 1 <= current) Blue else Color(0xFFD7DCE8), RoundedCornerShape(99.dp))
             )
         }
     }
@@ -854,25 +831,9 @@ private fun ResultScreen(
     onHistory: () -> Unit
 ) {
     val percentage = if (total == 0) 0 else (score * 100 / total)
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .padding(24.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = 620.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(130.dp)
-                    .background(if (percentage >= 60) GreenSoft else BlueSoft, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
+    Box(modifier = Modifier.fillMaxSize().systemBarsPadding().padding(24.dp), contentAlignment = Alignment.Center) {
+        Column(modifier = Modifier.fillMaxWidth().widthIn(max = 620.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(modifier = Modifier.size(130.dp).background(if (percentage >= 60) GreenSoft else BlueSoft, CircleShape), contentAlignment = Alignment.Center) {
                 Text("$percentage%", fontSize = 34.sp, fontWeight = FontWeight.Black, color = if (percentage >= 60) Green else Blue)
             }
             Spacer(Modifier.height(24.dp))
@@ -882,21 +843,11 @@ private fun ResultScreen(
             Spacer(Modifier.height(18.dp))
             Text("$score de $total acertos de primeira", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Ink)
             Spacer(Modifier.height(30.dp))
-            Button(
-                onClick = onAgain,
-                modifier = Modifier.fillMaxWidth().height(58.dp),
-                shape = RoundedCornerShape(18.dp)
-            ) {
+            Button(onClick = onAgain, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(18.dp)) {
                 Text("Fazer outra atividade", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(10.dp))
-            OutlinedButton(
-                onClick = onHistory,
-                modifier = Modifier.fillMaxWidth().height(54.dp),
-                shape = RoundedCornerShape(18.dp)
-            ) {
-                Text("Ver histórico")
-            }
+            OutlinedButton(onClick = onHistory, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) { Text("Ver histórico") }
             TextButton(onClick = onHome) { Text("Voltar ao início") }
         }
     }
@@ -904,31 +855,20 @@ private fun ResultScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HistoryScreen(
-    entries: List<HistoryEntry>,
-    onBack: () -> Unit,
-    onClear: () -> Unit
-) {
+private fun HistoryScreen(entries: List<HistoryEntry>, onBack: () -> Unit, onClear: () -> Unit) {
     Scaffold(
         containerColor = Cream,
         topBar = {
             TopAppBar(
                 title = { Text("Histórico", fontWeight = FontWeight.Bold) },
                 navigationIcon = { TextButton(onClick = onBack) { Text("← Voltar") } },
-                actions = {
-                    if (entries.isNotEmpty()) {
-                        TextButton(onClick = onClear) { Text("Limpar", color = Red) }
-                    }
-                },
+                actions = { if (entries.isNotEmpty()) TextButton(onClick = onClear) { Text("Limpar", color = Red) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Cream)
             )
         }
     ) { padding ->
         if (entries.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Ainda não há atividades concluídas.", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(8.dp))
@@ -942,9 +882,7 @@ private fun HistoryScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                items(entries) { entry ->
-                    HistoryCard(entry)
-                }
+                items(entries) { entry -> HistoryCard(entry) }
             }
         }
     }
@@ -953,19 +891,9 @@ private fun HistoryScreen(
 @Composable
 private fun HistoryCard(entry: HistoryEntry) {
     val formatter = remember { SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", Locale("pt", "BR")) }
-    Card(
-        modifier = Modifier.fillMaxWidth().widthIn(max = 760.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier.size(58.dp).background(BlueSoft, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
+    Card(modifier = Modifier.fillMaxWidth().widthIn(max = 760.dp), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(20.dp)) {
+        Row(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.size(58.dp).background(BlueSoft, CircleShape), contentAlignment = Alignment.Center) {
                 Text("${entry.score}/${entry.total}", color = Blue, fontWeight = FontWeight.Black)
             }
             Spacer(Modifier.width(16.dp))
@@ -977,4 +905,430 @@ private fun HistoryCard(entry: HistoryEntry) {
             Text("$percentage%", color = Green, fontWeight = FontWeight.Black, fontSize = 18.sp)
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ParentPinScreen(expectedPin: String, onBack: () -> Unit, onSuccess: () -> Unit) {
+    var pin by rememberSaveable { mutableStateOf("") }
+    var error by rememberSaveable { mutableStateOf(false) }
+    Scaffold(
+        containerColor = Cream,
+        topBar = {
+            TopAppBar(
+                title = { Text("Área dos Pais", fontWeight = FontWeight.Bold) },
+                navigationIcon = { TextButton(onClick = onBack) { Text("← Voltar") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Cream)
+            )
+        }
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp), contentAlignment = Alignment.Center) {
+            Card(modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(24.dp)) {
+                Column(modifier = Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(modifier = Modifier.size(72.dp).background(BlueSoft, CircleShape), contentAlignment = Alignment.Center) {
+                        Text("🔒", fontSize = 30.sp)
+                    }
+                    Spacer(Modifier.height(18.dp))
+                    Text("Acesso dos responsáveis", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Digite o PIN para cadastrar e gerenciar perguntas.", color = Muted, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(20.dp))
+                    OutlinedTextField(
+                        value = pin,
+                        onValueChange = { value ->
+                            pin = value.filter { it.isDigit() }.take(8)
+                            error = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("PIN") },
+                        singleLine = true,
+                        isError = error,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+                    )
+                    if (error) {
+                        Spacer(Modifier.height(6.dp))
+                        Text("PIN incorreto.", color = Red, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(18.dp))
+                    Button(
+                        onClick = {
+                            if (pin == expectedPin) onSuccess() else error = true
+                        },
+                        enabled = pin.isNotEmpty(),
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(18.dp)
+                    ) { Text("Entrar", fontWeight = FontWeight.Bold) }
+                    if (expectedPin == "1234") {
+                        Spacer(Modifier.height(16.dp))
+                        Text("Primeiro acesso: PIN 1234. Você poderá alterá-lo depois.", color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ParentHomeScreen(
+    questions: List<CustomQuestion>,
+    onBack: () -> Unit,
+    onNewQuestion: () -> Unit,
+    onManage: () -> Unit,
+    onChangePin: () -> Unit
+) {
+    Scaffold(
+        containerColor = Cream,
+        topBar = {
+            TopAppBar(
+                title = { Text("Área dos Pais", fontWeight = FontWeight.Bold) },
+                navigationIcon = { TextButton(onClick = onBack) { Text("← Início") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Cream)
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp).verticalScroll(rememberScrollState()).widthIn(max = 900.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = BlueSoft), shape = RoundedCornerShape(24.dp)) {
+                Column(Modifier.padding(24.dp)) {
+                    Text("Perguntas personalizadas", color = Blue, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Text("${questions.size} cadastrada${if (questions.size == 1) "" else "s"}", fontSize = 30.sp, fontWeight = FontWeight.Black, color = Ink)
+                    Spacer(Modifier.height(8.dp))
+                    Text("As perguntas cadastradas aqui entram primeiro nas atividades. Cada atividade continua com 5 questões.", color = Muted)
+                }
+            }
+            Spacer(Modifier.height(18.dp))
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Subject.entries.forEach { subject ->
+                    val count = questions.count { it.subject == subject }
+                    Card(modifier = Modifier.width(155.dp), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(18.dp)) {
+                        Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(subject.symbol, color = Blue, fontWeight = FontWeight.Black, fontSize = 22.sp)
+                            Text(subject.label, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                            Text("$count", color = Green, fontWeight = FontWeight.Black, fontSize = 22.sp)
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+            Button(onClick = onNewQuestion, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(18.dp)) {
+                Text("+ Cadastrar pergunta", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(onClick = onManage, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(18.dp)) {
+                Text("Gerenciar perguntas", fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(10.dp))
+            TextButton(onClick = onChangePin) { Text("Alterar PIN") }
+            Spacer(Modifier.height(10.dp))
+            Text("Versão 2.0", color = Muted, fontSize = 12.sp)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ParentQuestionsScreen(
+    initialQuestions: List<CustomQuestion>,
+    onBack: () -> Unit,
+    onNew: () -> Unit,
+    onEdit: (String) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    var questions by remember(initialQuestions) { mutableStateOf(initialQuestions) }
+    var selectedSubjectName by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingDelete by remember { mutableStateOf<CustomQuestion?>(null) }
+    val selectedSubject = selectedSubjectName?.let { runCatching { Subject.valueOf(it) }.getOrNull() }
+    val filtered = questions.filter { selectedSubject == null || it.subject == selectedSubject }
+
+    if (pendingDelete != null) {
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Excluir pergunta?") },
+            text = { Text("Esta pergunta será removida das próximas atividades.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val id = pendingDelete!!.id
+                    onDelete(id)
+                    questions = questions.filterNot { it.id == id }
+                    pendingDelete = null
+                }) { Text("Excluir", color = Red) }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancelar") } }
+        )
+    }
+
+    Scaffold(
+        containerColor = Cream,
+        topBar = {
+            TopAppBar(
+                title = { Text("Perguntas", fontWeight = FontWeight.Bold) },
+                navigationIcon = { TextButton(onClick = onBack) { Text("← Pais") } },
+                actions = { TextButton(onClick = onNew) { Text("+ Nova") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Cream)
+            )
+        }
+    ) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterButton("Todas", selectedSubject == null) { selectedSubjectName = null }
+                Subject.entries.forEach { subject ->
+                    FilterButton(subject.label, selectedSubject == subject) { selectedSubjectName = subject.name }
+                }
+            }
+            HorizontalDivider()
+            if (filtered.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Nenhuma pergunta cadastrada aqui.", fontWeight = FontWeight.Bold, fontSize = 20.sp, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Toque em “+ Nova” para criar a primeira.", color = Muted, textAlign = TextAlign.Center)
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    items(filtered, key = { it.id }) { question ->
+                        CustomQuestionCard(question, onEdit = { onEdit(question.id) }, onDelete = { pendingDelete = question })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    if (selected) {
+        Button(onClick = onClick, shape = RoundedCornerShape(99.dp)) { Text(label) }
+    } else {
+        OutlinedButton(onClick = onClick, shape = RoundedCornerShape(99.dp)) { Text(label) }
+    }
+}
+
+@Composable
+private fun CustomQuestionCard(question: CustomQuestion, onEdit: () -> Unit, onDelete: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth().widthIn(max = 820.dp), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.padding(18.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(question.subject.label, color = Blue, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                TextButton(onClick = onEdit) { Text("Editar") }
+                TextButton(onClick = onDelete) { Text("Excluir", color = Red) }
+            }
+            Text(question.prompt, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            question.options.forEachIndexed { index, option ->
+                Text("${('A'.code + index).toChar()}) $option", color = if (index == question.correctIndex) Green else Muted, fontWeight = if (index == question.correctIndex) FontWeight.Bold else FontWeight.Normal)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuestionEditorScreen(editing: CustomQuestion?, onBack: () -> Unit, onSave: (CustomQuestion) -> Unit) {
+    var subjectName by rememberSaveable(editing?.id) { mutableStateOf(editing?.subject?.name ?: Subject.PORTUGUES.name) }
+    var prompt by rememberSaveable(editing?.id) { mutableStateOf(editing?.prompt ?: "") }
+    var optionA by rememberSaveable(editing?.id) { mutableStateOf(editing?.options?.getOrNull(0) ?: "") }
+    var optionB by rememberSaveable(editing?.id) { mutableStateOf(editing?.options?.getOrNull(1) ?: "") }
+    var optionC by rememberSaveable(editing?.id) { mutableStateOf(editing?.options?.getOrNull(2) ?: "") }
+    var optionD by rememberSaveable(editing?.id) { mutableStateOf(editing?.options?.getOrNull(3) ?: "") }
+    var correctIndex by rememberSaveable(editing?.id) { mutableIntStateOf(editing?.correctIndex ?: -1) }
+    var explanation by rememberSaveable(editing?.id) { mutableStateOf(editing?.explanation ?: "") }
+    var showErrors by rememberSaveable { mutableStateOf(false) }
+
+    val subject = Subject.valueOf(subjectName)
+    val options = listOf(optionA, optionB, optionC, optionD)
+    val valid = prompt.isNotBlank() && options.all { it.isNotBlank() } && correctIndex in 0..3
+
+    Scaffold(
+        containerColor = Cream,
+        topBar = {
+            TopAppBar(
+                title = { Text(if (editing == null) "Nova pergunta" else "Editar pergunta", fontWeight = FontWeight.Bold) },
+                navigationIcon = { TextButton(onClick = onBack) { Text("← Voltar") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Cream)
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp).verticalScroll(rememberScrollState()).widthIn(max = 820.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("Matéria", modifier = Modifier.fillMaxWidth(), fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Subject.entries.forEach { item ->
+                    FilterButton(item.label, item == subject) { subjectName = item.name }
+                }
+            }
+            Spacer(Modifier.height(18.dp))
+
+            OutlinedTextField(
+                value = prompt,
+                onValueChange = { prompt = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Pergunta") },
+                minLines = 3,
+                isError = showErrors && prompt.isBlank()
+            )
+            Spacer(Modifier.height(18.dp))
+            Text("Alternativas", modifier = Modifier.fillMaxWidth(), fontWeight = FontWeight.Bold)
+            Text("Preencha as quatro e marque a resposta correta.", modifier = Modifier.fillMaxWidth(), color = Muted, fontSize = 13.sp)
+            Spacer(Modifier.height(10.dp))
+
+            AnswerEditor("A", optionA, correctIndex == 0, showErrors && optionA.isBlank(), onText = { optionA = it }, onCorrect = { correctIndex = 0 })
+            AnswerEditor("B", optionB, correctIndex == 1, showErrors && optionB.isBlank(), onText = { optionB = it }, onCorrect = { correctIndex = 1 })
+            AnswerEditor("C", optionC, correctIndex == 2, showErrors && optionC.isBlank(), onText = { optionC = it }, onCorrect = { correctIndex = 2 })
+            AnswerEditor("D", optionD, correctIndex == 3, showErrors && optionD.isBlank(), onText = { optionD = it }, onCorrect = { correctIndex = 3 })
+
+            if (showErrors && correctIndex !in 0..3) {
+                Text("Marque qual alternativa é a correta.", modifier = Modifier.fillMaxWidth(), color = Red, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(14.dp))
+            OutlinedTextField(
+                value = explanation,
+                onValueChange = { explanation = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Explicação após o acerto (opcional)") },
+                minLines = 2
+            )
+            Spacer(Modifier.height(24.dp))
+            Button(
+                onClick = {
+                    if (!valid) {
+                        showErrors = true
+                    } else {
+                        val cleanOptions = options.map { it.trim() }
+                        onSave(
+                            CustomQuestion(
+                                id = editing?.id ?: UUID.randomUUID().toString(),
+                                subject = subject,
+                                prompt = prompt.trim(),
+                                options = cleanOptions,
+                                correctIndex = correctIndex,
+                                explanation = explanation.trim().ifBlank { "Resposta correta: ${cleanOptions[correctIndex]}." }
+                            )
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(60.dp),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Text(if (editing == null) "Salvar pergunta" else "Salvar alterações", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            }
+            Spacer(Modifier.height(30.dp))
+        }
+    }
+}
+
+@Composable
+private fun AnswerEditor(
+    letter: String,
+    text: String,
+    isCorrect: Boolean,
+    isError: Boolean,
+    onText: (String) -> Unit,
+    onCorrect: () -> Unit
+) {
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = onText,
+            modifier = Modifier.weight(1f),
+            label = { Text("$letter) Alternativa") },
+            singleLine = true,
+            isError = isError
+        )
+        Spacer(Modifier.width(8.dp))
+        if (isCorrect) {
+            Button(onClick = onCorrect, modifier = Modifier.width(112.dp), shape = RoundedCornerShape(14.dp)) { Text("✓ Correta") }
+        } else {
+            OutlinedButton(onClick = onCorrect, modifier = Modifier.width(112.dp), shape = RoundedCornerShape(14.dp)) { Text("Correta?") }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChangePinScreen(currentPin: String, onBack: () -> Unit, onSave: (String) -> Unit) {
+    var oldPin by rememberSaveable { mutableStateOf("") }
+    var newPin by rememberSaveable { mutableStateOf("") }
+    var confirmPin by rememberSaveable { mutableStateOf("") }
+    var error by rememberSaveable { mutableStateOf<String?>(null) }
+
+    fun clean(value: String): String = value.filter { it.isDigit() }.take(8)
+
+    Scaffold(
+        containerColor = Cream,
+        topBar = {
+            TopAppBar(
+                title = { Text("Alterar PIN", fontWeight = FontWeight.Bold) },
+                navigationIcon = { TextButton(onClick = onBack) { Text("← Voltar") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Cream)
+            )
+        }
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp), contentAlignment = Alignment.TopCenter) {
+            Column(modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+                Text("O PIN deve ter entre 4 e 8 números.", color = Muted)
+                Spacer(Modifier.height(16.dp))
+                PinField("PIN atual", oldPin) { oldPin = clean(it); error = null }
+                Spacer(Modifier.height(10.dp))
+                PinField("Novo PIN", newPin) { newPin = clean(it); error = null }
+                Spacer(Modifier.height(10.dp))
+                PinField("Confirmar novo PIN", confirmPin) { confirmPin = clean(it); error = null }
+                if (error != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(error!!, color = Red, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(22.dp))
+                Button(
+                    onClick = {
+                        error = when {
+                            oldPin != currentPin -> "O PIN atual está incorreto."
+                            newPin.length !in 4..8 -> "O novo PIN precisa ter de 4 a 8 números."
+                            newPin != confirmPin -> "A confirmação não corresponde ao novo PIN."
+                            newPin == currentPin -> "Escolha um PIN diferente do atual."
+                            else -> null
+                        }
+                        if (error == null) onSave(newPin)
+                    },
+                    modifier = Modifier.fillMaxWidth().height(58.dp),
+                    shape = RoundedCornerShape(18.dp)
+                ) { Text("Salvar novo PIN", fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PinField(label: String, value: String, onValueChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(label) },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+    )
 }
