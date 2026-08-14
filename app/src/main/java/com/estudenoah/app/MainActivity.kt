@@ -117,7 +117,9 @@ private enum class AppScreen {
     PARENT_HOME,
     PARENT_QUESTIONS,
     QUESTION_EDITOR,
-    CHANGE_PIN
+    CHANGE_PIN,
+    MATERIAL_INPUT,
+    MATERIAL_PREVIEW
 }
 
 private enum class Subject(val label: String, val symbol: String) {
@@ -152,6 +154,15 @@ private data class HistoryEntry(
     val score: Int,
     val total: Int,
     val timestamp: Long
+)
+
+private data class PreparedActivity(
+    val id: String,
+    val title: String,
+    val subject: Subject,
+    val sourceText: String,
+    val questions: List<Question>,
+    val createdAt: Long
 )
 
 private object QuestionBank {
@@ -240,6 +251,162 @@ private object QuestionJson {
             }
         }
     }.getOrElse { emptyList() }
+}
+
+
+private object MaterialQuestionGenerator {
+    private data class Candidate(val sentence: String, val answer: String)
+
+    private val wordRegex = Regex("[\\p{L}À-ÿ][\\p{L}À-ÿ'’-]{3,}")
+    private val sentenceSplit = Regex("(?<=[.!?])\\s+|\\n+")
+    private val spaces = Regex("\\s+")
+    private val stopWords = setOf(
+        "aquela", "aquele", "aqueles", "aquelas", "ainda", "algum", "alguma", "alguns", "algumas",
+        "assim", "cada", "como", "com", "contra", "depois", "desde", "dessa", "desse", "desta", "deste",
+        "durante", "ela", "elas", "ele", "eles", "entre", "essa", "essas", "esse", "esses", "esta", "estas",
+        "este", "estes", "está", "estão", "foram", "mais", "mas", "mesma", "mesmo", "muito", "muita", "muitos",
+        "muitas", "não", "nossa", "nosso", "numa", "nunca", "onde", "outra", "outro", "para", "pela", "pelas",
+        "pelo", "pelos", "porque", "quando", "qual", "quais", "quem", "seja", "sendo", "será", "sobre", "também",
+        "tem", "tendo", "toda", "todas", "todo", "todos", "uma", "umas", "uns", "vários", "várias", "isso", "isto",
+        "eram", "era", "foi", "são", "ser", "seu", "sua", "seus", "suas", "dos", "das", "nas", "nos", "por",
+        "principalmente", "geralmente", "normalmente", "formado", "formada", "formados", "formadas", "possui", "possuem",
+        "apresenta", "apresentam", "conhecido", "conhecida", "conhecidos", "conhecidas", "destaca", "destacam", "chamado",
+        "chamada", "chamados", "chamadas", "completa", "completam", "concentra", "concentram", "utiliza", "utilizam",
+        "permite", "permitem", "indica", "indicam", "acontece", "acontecem", "ocorre", "ocorrem", "existe", "existem",
+        "pode", "podem", "deve", "devem"
+    )
+
+    fun generate(text: String, subject: Subject, count: Int = 5, salt: Long = 0L): List<Question> {
+        val normalized = text.replace("\\r", "").trim()
+        if (normalized.length < 140) return emptyList()
+
+        val sentences = normalized
+            .split(sentenceSplit)
+            .map { it.replace(spaces, " ").trim().trim('•', '-', '–', '—') }
+            .filter { sentence ->
+                sentence.length in 35..340 && sentence.split(spaces).size >= 6
+            }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+
+        if (sentences.size < 2) return emptyList()
+
+        fun contentWords(sentence: String): List<String> = wordRegex.findAll(sentence)
+            .map { it.value }
+            .filter { word ->
+                val lower = word.lowercase(Locale.getDefault())
+                lower !in stopWords && lower.length >= 4 && lower.any { it.isLetter() }
+            }
+            .toList()
+
+        val vocabulary = sentences
+            .flatMap(::contentWords)
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+
+        if (vocabulary.size < 7) return emptyList()
+
+        val candidates = sentences.flatMap { sentence ->
+            contentWords(sentence)
+                .distinctBy { it.lowercase(Locale.getDefault()) }
+                .sortedWith(compareByDescending<String> { it.length }.thenBy { it.lowercase(Locale.getDefault()) })
+                .take(3)
+                .map { Candidate(sentence, it) }
+        }
+
+        if (candidates.size < count) return emptyList()
+
+        val seed = normalized.hashCode().toLong() xor subject.name.hashCode().toLong() xor salt
+        val random = kotlin.random.Random(seed)
+        val result = mutableListOf<Question>()
+        val usedSentences = mutableMapOf<String, Int>()
+
+        for (candidate in candidates.shuffled(random)) {
+            if (result.size >= count) break
+            val sentenceKey = candidate.sentence.lowercase(Locale.getDefault())
+            if ((usedSentences[sentenceKey] ?: 0) >= 2) continue
+
+            val answerLower = candidate.answer.lowercase(Locale.getDefault())
+            val wordsInSentence = contentWords(candidate.sentence)
+                .map { it.lowercase(Locale.getDefault()) }
+                .toSet()
+
+            val preferred = vocabulary.filter { word ->
+                val lower = word.lowercase(Locale.getDefault())
+                lower != answerLower && lower !in wordsInSentence
+            }
+            val fallback = vocabulary.filter { it.lowercase(Locale.getDefault()) != answerLower }
+            val pool = (preferred + fallback)
+                .distinctBy { it.lowercase(Locale.getDefault()) }
+                .sortedBy { kotlin.math.abs(it.length - candidate.answer.length) }
+                .take(14)
+                .shuffled(random)
+
+            val distractors = pool.take(3)
+            if (distractors.size < 3) continue
+
+            val blankSentence = candidate.sentence.replaceFirst(candidate.answer, "_____")
+            if (blankSentence == candidate.sentence) continue
+
+            val options = (distractors + candidate.answer).shuffled(random)
+            val correctIndex = options.indexOf(candidate.answer)
+            val id = "mat-${subject.name.lowercase()}-${candidate.sentence.hashCode()}-${candidate.answer.hashCode()}-${result.size}"
+
+            result += Question(
+                id = id,
+                prompt = "De acordo com o material, complete a informação:\n“$blankSentence”",
+                options = options,
+                correctIndex = correctIndex,
+                explanation = "No material, a informação aparece assim: “${candidate.sentence}”"
+            )
+            usedSentences[sentenceKey] = (usedSentences[sentenceKey] ?: 0) + 1
+        }
+
+        return result.take(count)
+    }
+}
+
+private object PreparedActivityStorage {
+    private const val PREFS = "estude_noah_prefs"
+    private const val KEY_PREPARED = "prepared_activity"
+
+    fun load(context: Context): PreparedActivity? {
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_PREPARED, null) ?: return null
+        return runCatching {
+            val item = JSONObject(raw)
+            val subject = Subject.valueOf(item.getString("subject"))
+            val questions = QuestionJson.decode(item.getJSONArray("questions").toString())
+            if (questions.isEmpty()) return@runCatching null
+            PreparedActivity(
+                id = item.getString("id"),
+                title = item.getString("title"),
+                subject = subject,
+                sourceText = item.optString("sourceText", ""),
+                questions = questions,
+                createdAt = item.optLong("createdAt", System.currentTimeMillis())
+            )
+        }.getOrNull()
+    }
+
+    fun save(context: Context, activity: PreparedActivity) {
+        val item = JSONObject()
+            .put("id", activity.id)
+            .put("title", activity.title)
+            .put("subject", activity.subject.name)
+            .put("sourceText", activity.sourceText)
+            .put("questions", JSONArray(QuestionJson.encode(activity.questions)))
+            .put("createdAt", activity.createdAt)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_PREPARED, item.toString())
+            .apply()
+    }
+
+    fun clear(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_PREPARED)
+            .apply()
+    }
 }
 
 private object CustomQuestionStorage {
@@ -388,6 +555,14 @@ private fun EstudeNoahApp() {
     var finalScore by rememberSaveable { mutableIntStateOf(0) }
     var activeQuestionsJson by rememberSaveable { mutableStateOf("[]") }
     var editingQuestionId by rememberSaveable { mutableStateOf<String?>(null) }
+    var materialTitle by rememberSaveable { mutableStateOf("") }
+    var materialText by rememberSaveable { mutableStateOf("") }
+    var materialSubjectName by rememberSaveable { mutableStateOf(Subject.PORTUGUES.name) }
+    var materialQuestionsJson by rememberSaveable { mutableStateOf("[]") }
+    var materialSalt by rememberSaveable { mutableStateOf(0L) }
+    var quizReturnScreenName by rememberSaveable { mutableStateOf(AppScreen.SUBJECTS.name) }
+    var historySubjectLabel by rememberSaveable { mutableStateOf("") }
+    var activePreparedId by rememberSaveable { mutableStateOf<String?>(null) }
 
     val screen = AppScreen.valueOf(screenName)
     val selectedSubject = subjectName?.let { runCatching { Subject.valueOf(it) }.getOrNull() }
@@ -403,24 +578,58 @@ private fun EstudeNoahApp() {
         feedback = null
         activeQuestionsJson = "[]"
         editingQuestionId = null
+        materialTitle = ""
+        materialText = ""
+        materialQuestionsJson = "[]"
+        materialSalt = 0L
+        quizReturnScreenName = AppScreen.SUBJECTS.name
+        historySubjectLabel = ""
+        activePreparedId = null
     }
 
-    fun startSubject(subject: Subject) {
-        val activity = QuestionBank.activity(context, subject)
+    fun startActivity(
+        subject: Subject,
+        questions: List<Question>,
+        returnScreen: AppScreen,
+        historyLabel: String,
+        preparedId: String? = null
+    ) {
         subjectName = subject.name
-        activeQuestionsJson = QuestionJson.encode(activity)
+        activeQuestionsJson = QuestionJson.encode(questions)
         questionIndex = 0
         score = 0
         firstAttemptAlreadyUsed = false
         solved = false
         feedback = null
+        quizReturnScreenName = returnScreen.name
+        historySubjectLabel = historyLabel
+        activePreparedId = preparedId
         screenName = AppScreen.QUIZ.name
+    }
+
+    fun startSubject(subject: Subject) {
+        startActivity(
+            subject = subject,
+            questions = QuestionBank.activity(context, subject),
+            returnScreen = AppScreen.SUBJECTS,
+            historyLabel = subject.label
+        )
+    }
+
+    fun startPrepared(activity: PreparedActivity) {
+        startActivity(
+            subject = activity.subject,
+            questions = activity.questions,
+            returnScreen = AppScreen.HOME,
+            historyLabel = "${activity.subject.label} • ${activity.title}",
+            preparedId = activity.id
+        )
     }
 
     BackHandler(enabled = screen != AppScreen.HOME) {
         when (screen) {
             AppScreen.SUBJECTS -> goHome()
-            AppScreen.QUIZ -> screenName = AppScreen.SUBJECTS.name
+            AppScreen.QUIZ -> screenName = quizReturnScreenName
             AppScreen.RESULT -> goHome()
             AppScreen.HISTORY -> goHome()
             AppScreen.PARENT_PIN -> goHome()
@@ -428,6 +637,8 @@ private fun EstudeNoahApp() {
             AppScreen.PARENT_QUESTIONS -> screenName = AppScreen.PARENT_HOME.name
             AppScreen.QUESTION_EDITOR -> screenName = AppScreen.PARENT_QUESTIONS.name
             AppScreen.CHANGE_PIN -> screenName = AppScreen.PARENT_HOME.name
+            AppScreen.MATERIAL_INPUT -> screenName = AppScreen.PARENT_HOME.name
+            AppScreen.MATERIAL_PREVIEW -> screenName = AppScreen.MATERIAL_INPUT.name
             AppScreen.HOME -> Unit
         }
     }
@@ -436,9 +647,11 @@ private fun EstudeNoahApp() {
         when (screen) {
             AppScreen.HOME -> HomeScreen(
                 history = HistoryStorage.load(context),
+                preparedActivity = PreparedActivityStorage.load(context),
                 onStart = { screenName = AppScreen.SUBJECTS.name },
                 onHistory = { screenName = AppScreen.HISTORY.name },
-                onParents = { screenName = AppScreen.PARENT_PIN.name }
+                onParents = { screenName = AppScreen.PARENT_PIN.name },
+                onPrepared = ::startPrepared
             )
 
             AppScreen.SUBJECTS -> SubjectScreen(onBack = ::goHome, onSelect = ::startSubject)
@@ -457,7 +670,7 @@ private fun EstudeNoahApp() {
                         solved = solved,
                         feedback = feedback,
                         firstAttemptAlreadyUsed = firstAttemptAlreadyUsed,
-                        onBack = { screenName = AppScreen.SUBJECTS.name },
+                        onBack = { screenName = quizReturnScreenName },
                         onAnswer = { optionIndex ->
                             if (!solved) {
                                 if (optionIndex == question.correctIndex) {
@@ -476,12 +689,16 @@ private fun EstudeNoahApp() {
                                 HistoryStorage.add(
                                     context,
                                     HistoryEntry(
-                                        subject = subject.label,
+                                        subject = historySubjectLabel.ifBlank { subject.label },
                                         score = score,
                                         total = activeQuestions.size,
                                         timestamp = System.currentTimeMillis()
                                     )
                                 )
+                                if (activePreparedId != null) {
+                                    PreparedActivityStorage.clear(context)
+                                    activePreparedId = null
+                                }
                                 screenName = AppScreen.RESULT.name
                             } else {
                                 questionIndex += 1
@@ -526,6 +743,7 @@ private fun EstudeNoahApp() {
                     screenName = AppScreen.QUESTION_EDITOR.name
                 },
                 onManage = { screenName = AppScreen.PARENT_QUESTIONS.name },
+                onNewMaterial = { screenName = AppScreen.MATERIAL_INPUT.name },
                 onChangePin = { screenName = AppScreen.CHANGE_PIN.name }
             )
 
@@ -558,6 +776,64 @@ private fun EstudeNoahApp() {
                 )
             }
 
+            AppScreen.MATERIAL_INPUT -> MaterialInputScreen(
+                initialSubject = runCatching { Subject.valueOf(materialSubjectName) }.getOrDefault(Subject.PORTUGUES),
+                initialTitle = materialTitle,
+                initialText = materialText,
+                onBack = { screenName = AppScreen.PARENT_HOME.name },
+                onGenerate = { subject, title, text, questions ->
+                    materialSubjectName = subject.name
+                    materialTitle = title
+                    materialText = text
+                    materialQuestionsJson = QuestionJson.encode(questions)
+                    materialSalt = 0L
+                    screenName = AppScreen.MATERIAL_PREVIEW.name
+                }
+            )
+
+            AppScreen.MATERIAL_PREVIEW -> {
+                val subject = runCatching { Subject.valueOf(materialSubjectName) }.getOrDefault(Subject.PORTUGUES)
+                val questions = QuestionJson.decode(materialQuestionsJson)
+                MaterialPreviewScreen(
+                    subject = subject,
+                    title = materialTitle,
+                    questions = questions,
+                    onBack = { screenName = AppScreen.MATERIAL_INPUT.name },
+                    onRegenerate = {
+                        materialSalt += 1L
+                        val regenerated = MaterialQuestionGenerator.generate(
+                            text = materialText,
+                            subject = subject,
+                            count = 5,
+                            salt = materialSalt
+                        )
+                        if (regenerated.size == 5) materialQuestionsJson = QuestionJson.encode(regenerated)
+                    },
+                    onSave = {
+                        PreparedActivityStorage.save(
+                            context,
+                            PreparedActivity(
+                                id = UUID.randomUUID().toString(),
+                                title = materialTitle,
+                                subject = subject,
+                                sourceText = materialText,
+                                questions = questions,
+                                createdAt = System.currentTimeMillis()
+                            )
+                        )
+                        goHome()
+                    },
+                    onTest = {
+                        startActivity(
+                            subject = subject,
+                            questions = questions,
+                            returnScreen = AppScreen.PARENT_HOME,
+                            historyLabel = "${subject.label} • ${materialTitle}"
+                        )
+                    }
+                )
+            }
+
             AppScreen.CHANGE_PIN -> ChangePinScreen(
                 currentPin = ParentStorage.getPin(context),
                 onBack = { screenName = AppScreen.PARENT_HOME.name },
@@ -573,9 +849,11 @@ private fun EstudeNoahApp() {
 @Composable
 private fun HomeScreen(
     history: List<HistoryEntry>,
+    preparedActivity: PreparedActivity?,
     onStart: () -> Unit,
     onHistory: () -> Unit,
-    onParents: () -> Unit
+    onParents: () -> Unit,
+    onPrepared: (PreparedActivity) -> Unit
 ) {
     BoxWithConstraints(
         modifier = Modifier.fillMaxSize().systemBarsPadding().padding(24.dp),
@@ -592,9 +870,11 @@ private fun HomeScreen(
                 HomeActions(
                     modifier = Modifier.weight(1f),
                     history = history,
+                    preparedActivity = preparedActivity,
                     onStart = onStart,
                     onHistory = onHistory,
-                    onParents = onParents
+                    onParents = onParents,
+                    onPrepared = onPrepared
                 )
             }
         } else {
@@ -604,7 +884,7 @@ private fun HomeScreen(
             ) {
                 WelcomeBlock()
                 Spacer(Modifier.height(28.dp))
-                HomeActions(history = history, onStart = onStart, onHistory = onHistory, onParents = onParents)
+                HomeActions(history = history, preparedActivity = preparedActivity, onStart = onStart, onHistory = onHistory, onParents = onParents, onPrepared = onPrepared)
             }
         }
     }
@@ -626,12 +906,33 @@ private fun WelcomeBlock(modifier: Modifier = Modifier) {
 @Composable
 private fun HomeActions(
     history: List<HistoryEntry>,
+    preparedActivity: PreparedActivity?,
     onStart: () -> Unit,
     onHistory: () -> Unit,
     onParents: () -> Unit,
+    onPrepared: (PreparedActivity) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
+        if (preparedActivity != null) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = GreenSoft),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(20.dp)) {
+                    Text("Atividade preparada", color = Green, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(preparedActivity.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                    Text(preparedActivity.subject.label, color = Muted)
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = { onPrepared(preparedActivity) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                        Text("Fazer atividade preparada", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+        }
         Button(onClick = onStart, modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(18.dp)) {
             Text("Começar atividade", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
@@ -976,6 +1277,7 @@ private fun ParentHomeScreen(
     onBack: () -> Unit,
     onNewQuestion: () -> Unit,
     onManage: () -> Unit,
+    onNewMaterial: () -> Unit,
     onChangePin: () -> Unit
 ) {
     Scaffold(
@@ -1021,8 +1323,12 @@ private fun ParentHomeScreen(
             }
 
             Spacer(Modifier.height(24.dp))
-            Button(onClick = onNewQuestion, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(18.dp)) {
-                Text("+ Cadastrar pergunta", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Button(onClick = onNewMaterial, modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(18.dp)) {
+                Text("Criar atividade a partir de texto", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(onClick = onNewQuestion, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(18.dp)) {
+                Text("+ Cadastrar pergunta manualmente", fontSize = 17.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(10.dp))
             OutlinedButton(onClick = onManage, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(18.dp)) {
@@ -1031,7 +1337,7 @@ private fun ParentHomeScreen(
             Spacer(Modifier.height(10.dp))
             TextButton(onClick = onChangePin) { Text("Alterar PIN") }
             Spacer(Modifier.height(10.dp))
-            Text("Versão 2.0", color = Muted, fontSize = 12.sp)
+            Text("Versão 3.0", color = Muted, fontSize = 12.sp)
         }
     }
 }
@@ -1263,6 +1569,204 @@ private fun AnswerEditor(
             Button(onClick = onCorrect, modifier = Modifier.width(112.dp), shape = RoundedCornerShape(14.dp)) { Text("✓ Correta") }
         } else {
             OutlinedButton(onClick = onCorrect, modifier = Modifier.width(112.dp), shape = RoundedCornerShape(14.dp)) { Text("Correta?") }
+        }
+    }
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MaterialInputScreen(
+    initialSubject: Subject,
+    initialTitle: String,
+    initialText: String,
+    onBack: () -> Unit,
+    onGenerate: (Subject, String, String, List<Question>) -> Unit
+) {
+    var subjectName by rememberSaveable { mutableStateOf(initialSubject.name) }
+    var title by rememberSaveable { mutableStateOf(initialTitle) }
+    var text by rememberSaveable { mutableStateOf(initialText) }
+    var error by rememberSaveable { mutableStateOf<String?>(null) }
+    val subject = runCatching { Subject.valueOf(subjectName) }.getOrDefault(Subject.PORTUGUES)
+
+    Scaffold(
+        containerColor = Cream,
+        topBar = {
+            TopAppBar(
+                title = { Text("Novo material", fontWeight = FontWeight.Bold) },
+                navigationIcon = { TextButton(onClick = onBack) { Text("← Pais") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Cream)
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp).verticalScroll(rememberScrollState()).widthIn(max = 900.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = BlueSoft), shape = RoundedCornerShape(20.dp)) {
+                Column(Modifier.padding(18.dp)) {
+                    Text("Cole o conteúdo estudado", color = Blue, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                    Spacer(Modifier.height(5.dp))
+                    Text("Nesta versão, o texto é analisado somente no tablet. Nada é enviado para a internet.", color = Muted)
+                }
+            }
+            Spacer(Modifier.height(18.dp))
+
+            Text("Matéria", modifier = Modifier.fillMaxWidth(), fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Subject.entries.forEach { item ->
+                    FilterButton(item.label, item == subject) {
+                        subjectName = item.name
+                        error = null
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it.take(80); error = null },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Título do material (opcional)") },
+                supportingText = { Text("Ex.: Sistema Solar, Brasil Colônia, Substantivos") },
+                singleLine = true
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = text,
+                onValueChange = { value ->
+                    text = value.take(25000)
+                    error = null
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Texto/material") },
+                minLines = 12,
+                supportingText = { Text("${text.length}/25.000 caracteres") },
+                isError = error != null
+            )
+
+            if (error != null) {
+                Spacer(Modifier.height(10.dp))
+                Card(colors = CardDefaults.cardColors(containerColor = RedSoft), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                    Text(error!!, color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.padding(14.dp))
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            Button(
+                onClick = {
+                    val cleanText = text.trim()
+                    val generated = MaterialQuestionGenerator.generate(cleanText, subject, count = 5)
+                    if (generated.size < 5) {
+                        error = "Não consegui extrair 5 questões seguras desse texto. Cole um material um pouco maior, com várias frases completas e informações diferentes."
+                    } else {
+                        val cleanTitle = title.trim().ifBlank { "Material de ${subject.label}" }
+                        onGenerate(subject, cleanTitle, cleanText, generated)
+                    }
+                },
+                enabled = text.trim().length >= 140,
+                modifier = Modifier.fillMaxWidth().height(62.dp),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Text("Gerar 5 questões", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "A geração local cria questões de completar lacunas usando somente informações presentes no material. Na próxima etapa poderemos acrescentar IA para perguntas mais variadas.",
+                color = Muted,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(28.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MaterialPreviewScreen(
+    subject: Subject,
+    title: String,
+    questions: List<Question>,
+    onBack: () -> Unit,
+    onRegenerate: () -> Unit,
+    onSave: () -> Unit,
+    onTest: () -> Unit
+) {
+    Scaffold(
+        containerColor = Cream,
+        topBar = {
+            TopAppBar(
+                title = { Text("Revisar atividade", fontWeight = FontWeight.Bold) },
+                navigationIcon = { TextButton(onClick = onBack) { Text("← Texto") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Cream)
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp).verticalScroll(rememberScrollState()).widthIn(max = 900.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = GreenSoft), shape = RoundedCornerShape(22.dp)) {
+                Column(Modifier.padding(20.dp)) {
+                    Text(subject.label, color = Green, fontWeight = FontWeight.Bold)
+                    Text(title, fontSize = 25.sp, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.height(5.dp))
+                    Text("${questions.size} questões geradas a partir do texto", color = Muted)
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+
+            questions.forEachIndexed { index, question ->
+                GeneratedQuestionPreview(index + 1, question)
+                Spacer(Modifier.height(12.dp))
+            }
+
+            Button(
+                onClick = onSave,
+                enabled = questions.size == 5,
+                modifier = Modifier.fillMaxWidth().height(62.dp),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Text("Salvar como atividade preparada", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(onClick = onTest, enabled = questions.size == 5, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(18.dp)) {
+                Text("Testar atividade agora", fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(6.dp))
+            TextButton(onClick = onRegenerate) { Text("Gerar outra versão") }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Ao salvar, esta atividade ficará destacada na tela inicial para Noah. Se já houver outra atividade preparada, ela será substituída.",
+                color = Muted,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(30.dp))
+        }
+    }
+}
+
+@Composable
+private fun GeneratedQuestionPreview(number: Int, question: Question) {
+    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.padding(18.dp)) {
+            Text("Questão $number", color = Blue, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Text(question.prompt, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            question.options.forEachIndexed { index, option ->
+                Text(
+                    "${('A'.code + index).toChar()}) $option",
+                    color = if (index == question.correctIndex) Green else Muted,
+                    fontWeight = if (index == question.correctIndex) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.padding(vertical = 2.dp)
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("Resposta correta destacada em verde.", color = Muted, fontSize = 12.sp)
         }
     }
 }
