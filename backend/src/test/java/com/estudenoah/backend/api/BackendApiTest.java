@@ -1,0 +1,49 @@
+package com.estudenoah.backend.api;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import com.estudenoah.backend.material.LegacyPptExtractor;
+
+@WebMvcTest({HealthController.class, MaterialController.class, ApiExceptionHandler.class})
+class BackendApiTest {
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private LegacyPptExtractor extractor;
+
+    @Test
+    void healthDoesNotDependOnExternalServices() throws Exception {
+        mockMvc.perform(get("/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ok"))
+                .andExpect(jsonPath("$.service").value("estude-noah-backend"));
+    }
+
+    @Test
+    void rejectsUnsupportedExtension() throws Exception {
+        var upload = new MockMultipartFile("file", "material.pptx", "application/octet-stream", new byte[]{1});
+
+        mockMvc.perform(multipart("/v1/materials/ppt/extract").file(upload))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.code").value("unsupported_file_type"));
+    }
+
+    @Test
+    void rejectsEmptyUpload() throws Exception {
+        var upload = new MockMultipartFile("file", "material.ppt", "application/octet-stream", new byte[]{});
+
+        mockMvc.perform(multipart("/v1/materials/ppt/extract").file(upload))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("empty_file"));
+    }
+}

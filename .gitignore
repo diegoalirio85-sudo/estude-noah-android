@@ -1,0 +1,16 @@
+# Android / Gradle
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+
+# Backend
+backend/target/
+backend/.env
+backend/*.log
+
+# Credentials and secrets
+*.service-account.json
+service-account*.json
+**/credentials.json
