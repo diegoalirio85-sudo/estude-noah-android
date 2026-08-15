@@ -1,10 +1,22 @@
 package com.estudenoah.app
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.os.Build
+import android.os.ext.SdkExtensions
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.graphics.pdf.PdfRenderer
+import android.graphics.pdf.PdfRendererPreV
+import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -69,6 +81,12 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import java.io.ByteArrayOutputStream
+import java.util.zip.ZipInputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.rememberCoroutineScope
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1337,7 +1355,7 @@ private fun ParentHomeScreen(
             Spacer(Modifier.height(10.dp))
             TextButton(onClick = onChangePin) { Text("Alterar PIN") }
             Spacer(Modifier.height(10.dp))
-            Text("Versão 3.0", color = Muted, fontSize = 12.sp)
+            Text("Versão 3.2", color = Muted, fontSize = 12.sp)
         }
     }
 }
@@ -1574,6 +1592,247 @@ private fun AnswerEditor(
 }
 
 
+private data class ImportedMaterialResult(
+    val fileName: String,
+    val extension: String,
+    val extractedText: String,
+    val message: String,
+    val usableForGeneration: Boolean
+)
+
+private object MaterialFileExtractor {
+    private val accepted = setOf("pdf", "ppt", "pptx", "docx", "odt", "doc", "mp4", "mp3", "avi")
+
+    fun displayName(context: Context, uri: Uri): String {
+        val resolver = context.contentResolver
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) {
+                return cursor.getString(index) ?: "material"
+            }
+        }
+        return uri.lastPathSegment?.substringAfterLast('/') ?: "material"
+    }
+
+    fun extract(context: Context, uri: Uri): ImportedMaterialResult {
+        val name = displayName(context, uri)
+        val ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        if (ext !in accepted) {
+            return ImportedMaterialResult(
+                fileName = name,
+                extension = ext,
+                extractedText = "",
+                message = "Formato não aceito nesta versão.",
+                usableForGeneration = false
+            )
+        }
+
+        return runCatching {
+            when (ext) {
+                "docx" -> {
+                    val text = extractZipXml(context, uri) { entry -> entry == "word/document.xml" }
+                    resultFromText(name, ext, text, "Texto extraído do DOCX.")
+                }
+                "pptx" -> {
+                    val text = extractZipXml(context, uri) { entry ->
+                        entry.startsWith("ppt/slides/slide") && entry.endsWith(".xml")
+                    }
+                    resultFromText(name, ext, text, "Texto extraído dos slides do PPTX.")
+                }
+                "odt" -> {
+                    val text = extractZipXml(context, uri) { entry -> entry == "content.xml" }
+                    resultFromText(name, ext, text, "Texto extraído do ODT.")
+                }
+                "doc", "ppt" -> {
+                    val bytes = readAllLimited(context, uri, 16 * 1024 * 1024)
+                    val text = extractLegacyPrintableText(bytes)
+                    resultFromText(
+                        name,
+                        ext,
+                        text,
+                        if (text.length >= 140) "Texto recuperado do formato antigo .$ext (extração experimental). Revise antes de gerar." else "Arquivo .$ext selecionado, mas não foi possível recuperar texto suficiente. Prefira salvar como ${if (ext == "doc") "DOCX" else "PPTX"}."
+                    )
+                }
+                "pdf" -> extractPdf(context, uri, name, ext)
+                "mp3", "mp4", "avi" -> ImportedMaterialResult(
+                    fileName = name,
+                    extension = ext,
+                    extractedText = "",
+                    message = "Arquivo de ${if (ext == "mp3") "áudio" else "vídeo"} selecionado. A transcrição automática de áudio/vídeo será a próxima etapa; esta versão ainda não transforma a fala do arquivo em texto.",
+                    usableForGeneration = false
+                )
+                else -> ImportedMaterialResult(name, ext, "", "Formato não suportado.", false)
+            }
+        }.getOrElse { error ->
+            ImportedMaterialResult(
+                fileName = name,
+                extension = ext,
+                extractedText = "",
+                message = "Não consegui ler este arquivo: ${error.message ?: "erro desconhecido"}.",
+                usableForGeneration = false
+            )
+        }
+    }
+
+    private fun resultFromText(name: String, ext: String, raw: String, successMessage: String): ImportedMaterialResult {
+        val clean = normalizeExtractedText(raw).take(25000)
+        return if (clean.length >= 40) {
+            ImportedMaterialResult(name, ext, clean, successMessage, clean.length >= 140)
+        } else {
+            ImportedMaterialResult(name, ext, clean, "O arquivo foi lido, mas encontrei pouco texto utilizável.", false)
+        }
+    }
+
+    private fun extractZipXml(context: Context, uri: Uri, include: (String) -> Boolean): String {
+        val pieces = mutableListOf<Pair<String, String>>()
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            ZipInputStream(input.buffered()).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    if (!entry.isDirectory && include(entry.name)) {
+                        val out = ByteArrayOutputStream()
+                        val buffer = ByteArray(8192)
+                        var total = 0
+                        while (true) {
+                            val read = zip.read(buffer)
+                            if (read <= 0) break
+                            total += read
+                            if (total > 8 * 1024 * 1024) break
+                            out.write(buffer, 0, read)
+                        }
+                        val xml = out.toString(Charsets.UTF_8.name())
+                        pieces += entry.name to xmlToText(xml)
+                    }
+                    zip.closeEntry()
+                    entry = zip.nextEntry
+                }
+            }
+        } ?: error("Não foi possível abrir o arquivo")
+        return pieces.sortedBy { it.first }.joinToString("\n\n") { it.second }
+    }
+
+    private fun xmlToText(xml: String): String {
+        return xml
+            .replace(Regex("</(?:w:p|a:p|text:p|text:h)>", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("<(?:w:tab|text:tab)[^>]*/>", RegexOption.IGNORE_CASE), "\t")
+            .replace(Regex("<[^>]+>"), " ")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+    }
+
+    private fun normalizeExtractedText(raw: String): String {
+        return raw
+            .replace('\u0000', ' ')
+            .replace(Regex("[ \\t]+"), " ")
+            .replace(Regex("\\n[ \\t]+"), "\n")
+            .replace(Regex("\\n{3,}"), "\n\n")
+            .trim()
+    }
+
+    private fun readAllLimited(context: Context, uri: Uri, maxBytes: Int): ByteArray {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            val out = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var total = 0
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                total += read
+                if (total > maxBytes) error("arquivo muito grande para extração local")
+                out.write(buffer, 0, read)
+            }
+            return out.toByteArray()
+        }
+        error("Não foi possível abrir o arquivo")
+    }
+
+    private fun extractLegacyPrintableText(bytes: ByteArray): String {
+        val pieces = linkedSetOf<String>()
+
+        val ascii = StringBuilder()
+        fun flushAscii() {
+            val value = ascii.toString().trim()
+            if (value.length >= 8 && value.count { it.isLetterOrDigit() } >= value.length / 2) pieces += value
+            ascii.clear()
+        }
+        for (b in bytes) {
+            val c = (b.toInt() and 0xFF).toChar()
+            if (c.code in 32..126 || c in "áàâãéêíóôõúçÁÀÂÃÉÊÍÓÔÕÚÇ") ascii.append(c) else flushAscii()
+        }
+        flushAscii()
+
+        val utf16 = StringBuilder()
+        var i = 0
+        fun flushUtf16() {
+            val value = utf16.toString().trim()
+            if (value.length >= 6 && value.count { it.isLetterOrDigit() } >= value.length / 2) pieces += value
+            utf16.clear()
+        }
+        while (i + 1 < bytes.size) {
+            val lo = bytes[i].toInt() and 0xFF
+            val hi = bytes[i + 1].toInt() and 0xFF
+            val code = lo or (hi shl 8)
+            val c = code.toChar()
+            if (hi == 0 && (c.code in 32..126)) utf16.append(c) else flushUtf16()
+            i += 2
+        }
+        flushUtf16()
+
+        return normalizeExtractedText(pieces.joinToString("\n"))
+    }
+
+    private fun extractPdf(context: Context, uri: Uri, name: String, ext: String): ImportedMaterialResult {
+        val resolver = context.contentResolver
+        if (Build.VERSION.SDK_INT >= 35) {
+            val text = resolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                PdfRenderer(pfd).use { renderer ->
+                    buildString {
+                        val pages = minOf(renderer.pageCount, 80)
+                        for (i in 0 until pages) {
+                            renderer.openPage(i).use { page ->
+                                val pageText = page.textContents.joinToString(" ") { it.text }
+                                if (pageText.isNotBlank()) append(pageText).append("\n\n")
+                                if (length >= 25000) return@buildString
+                            }
+                        }
+                    }
+                }
+            }.orEmpty()
+            return resultFromText(name, ext, text, "Texto extraído do PDF.")
+        }
+
+        if (Build.VERSION.SDK_INT >= 31 && SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) >= 13) {
+            val text = resolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                PdfRendererPreV(pfd).use { renderer ->
+                    buildString {
+                        val pages = minOf(renderer.pageCount, 80)
+                        for (i in 0 until pages) {
+                            renderer.openPage(i).use { page ->
+                                val pageText = page.textContents.joinToString(" ") { it.text }
+                                if (pageText.isNotBlank()) append(pageText).append("\n\n")
+                                if (length >= 25000) return@buildString
+                            }
+                        }
+                    }
+                }
+            }.orEmpty()
+            return resultFromText(name, ext, text, "Texto extraído do PDF.")
+        }
+
+        return ImportedMaterialResult(
+            fileName = name,
+            extension = ext,
+            extractedText = "",
+            message = "PDF selecionado. Para extrair o texto localmente, o tablet precisa do mecanismo PDF mais recente do Android. Se não estiver disponível, você ainda pode colar ou ditar o texto.",
+            usableForGeneration = false
+        )
+    }
+}
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MaterialInputScreen(
@@ -1587,7 +1846,62 @@ private fun MaterialInputScreen(
     var title by rememberSaveable { mutableStateOf(initialTitle) }
     var text by rememberSaveable { mutableStateOf(initialText) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
+    var voiceError by rememberSaveable { mutableStateOf<String?>(null) }
+    var fileStatus by rememberSaveable { mutableStateOf<String?>(null) }
+    var importedFiles by rememberSaveable { mutableStateOf("") }
+    var importingFiles by rememberSaveable { mutableStateOf(false) }
     val subject = runCatching { Subject.valueOf(subjectName) }.getOrDefault(Subject.PORTUGUES)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val speechLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                ?.trim()
+                .orEmpty()
+
+            if (spoken.isNotBlank()) {
+                val separator = if (text.isBlank()) "" else "\n\n"
+                text = (text.trimEnd() + separator + spoken).take(25000)
+                error = null
+                voiceError = null
+            } else {
+                voiceError = "Não consegui reconhecer o que foi falado. Tente novamente."
+            }
+        }
+    }
+
+    val fileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        importingFiles = true
+        fileStatus = "Lendo ${uris.size} arquivo(s)..."
+        scope.launch {
+            val results = withContext(Dispatchers.IO) {
+                uris.take(8).map { uri -> MaterialFileExtractor.extract(context, uri) }
+            }
+            val usableTexts = results.mapNotNull { result ->
+                result.extractedText.takeIf { it.isNotBlank() }
+                    ?.let { "[${result.fileName}]\n$it" }
+            }
+            if (usableTexts.isNotEmpty()) {
+                val separator = if (text.isBlank()) "" else "\n\n"
+                text = (text.trimEnd() + separator + usableTexts.joinToString("\n\n")).take(25000)
+                error = null
+                if (title.isBlank() && results.size == 1) {
+                    title = results.first().fileName.substringBeforeLast('.').take(80)
+                }
+            }
+            importedFiles = results.joinToString(" • ") { it.fileName }
+            fileStatus = results.joinToString("\n") { "• ${it.fileName}: ${it.message}" }
+            importingFiles = false
+        }
+    }
 
     Scaffold(
         containerColor = Cream,
@@ -1605,9 +1919,9 @@ private fun MaterialInputScreen(
         ) {
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = BlueSoft), shape = RoundedCornerShape(20.dp)) {
                 Column(Modifier.padding(18.dp)) {
-                    Text("Cole o conteúdo estudado", color = Blue, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                    Text("Adicionar material estudado", color = Blue, fontWeight = FontWeight.Black, fontSize = 20.sp)
                     Spacer(Modifier.height(5.dp))
-                    Text("Nesta versão, o texto é analisado somente no tablet. Nada é enviado para a internet.", color = Muted)
+                    Text("Você pode colar texto, ditar por voz ou selecionar arquivos do tablet.", color = Muted)
                 }
             }
             Spacer(Modifier.height(18.dp))
@@ -1632,19 +1946,89 @@ private fun MaterialInputScreen(
                 supportingText = { Text("Ex.: Sistema Solar, Brasil Colônia, Substantivos") },
                 singleLine = true
             )
+
             Spacer(Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = { fileLauncher.launch(arrayOf("*/*")) },
+                enabled = !importingFiles,
+                modifier = Modifier.fillMaxWidth().height(58.dp),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Text(if (importingFiles) "Lendo arquivos..." else "📎 Adicionar PDF, Office, ODT, áudio ou vídeo", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Formatos aceitos: PDF, PPT, PPTX, DOC, DOCX, ODT, MP3, MP4 e AVI. Você pode selecionar mais de um arquivo.",
+                color = Muted,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
+
+            if (importedFiles.isNotBlank()) {
+                Spacer(Modifier.height(10.dp))
+                Card(colors = CardDefaults.cardColors(containerColor = GreenSoft), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text("Materiais selecionados", color = Green, fontWeight = FontWeight.Bold)
+                        Text(importedFiles, color = Ink, fontSize = 13.sp)
+                    }
+                }
+            }
+            if (fileStatus != null) {
+                Spacer(Modifier.height(8.dp))
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                    Text(fileStatus!!, color = Muted, fontSize = 13.sp, modifier = Modifier.padding(14.dp))
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
             OutlinedTextField(
                 value = text,
                 onValueChange = { value ->
                     text = value.take(25000)
                     error = null
+                    voiceError = null
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Texto/material") },
+                label = { Text("Texto extraído / material") },
                 minLines = 12,
                 supportingText = { Text("${text.length}/25.000 caracteres") },
                 isError = error != null
             )
+
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = {
+                    val voiceIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
+                        putExtra(RecognizerIntent.EXTRA_PROMPT, "Fale o conteúdo do material")
+                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                    }
+                    try {
+                        speechLauncher.launch(voiceIntent)
+                    } catch (_: ActivityNotFoundException) {
+                        voiceError = "Este tablet não encontrou um serviço de reconhecimento de voz disponível."
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Text("🎤 Falar e adicionar ao texto", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "DOCX, PPTX e ODT têm o texto extraído localmente. PDF depende do mecanismo PDF atualizado do Android. DOC/PPT antigos usam extração experimental. MP3/MP4/AVI podem ser selecionados, mas a transcrição automática do áudio entra na próxima etapa.",
+                color = Muted,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
+
+            if (voiceError != null) {
+                Spacer(Modifier.height(10.dp))
+                Card(colors = CardDefaults.cardColors(containerColor = RedSoft), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                    Text(voiceError!!, color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.padding(14.dp))
+                }
+            }
 
             if (error != null) {
                 Spacer(Modifier.height(10.dp))
@@ -1659,13 +2043,13 @@ private fun MaterialInputScreen(
                     val cleanText = text.trim()
                     val generated = MaterialQuestionGenerator.generate(cleanText, subject, count = 5)
                     if (generated.size < 5) {
-                        error = "Não consegui extrair 5 questões seguras desse texto. Cole um material um pouco maior, com várias frases completas e informações diferentes."
+                        error = "Não consegui extrair 5 questões seguras desse material. Confira o texto extraído ou acrescente mais conteúdo por texto/voz."
                     } else {
                         val cleanTitle = title.trim().ifBlank { "Material de ${subject.label}" }
                         onGenerate(subject, cleanTitle, cleanText, generated)
                     }
                 },
-                enabled = text.trim().length >= 140,
+                enabled = text.trim().length >= 140 && !importingFiles,
                 modifier = Modifier.fillMaxWidth().height(62.dp),
                 shape = RoundedCornerShape(18.dp)
             ) {
@@ -1673,7 +2057,7 @@ private fun MaterialInputScreen(
             }
             Spacer(Modifier.height(10.dp))
             Text(
-                "A geração local cria questões de completar lacunas usando somente informações presentes no material. Na próxima etapa poderemos acrescentar IA para perguntas mais variadas.",
+                "A geração das questões continua local e usa somente o texto disponível no campo acima.",
                 color = Muted,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center
