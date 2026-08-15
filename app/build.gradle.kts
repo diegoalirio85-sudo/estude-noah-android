@@ -11,8 +11,8 @@ android {
         applicationId = "com.estudenoah.app"
         minSdk = 24
         targetSdk = 37
-        versionCode = 3
-        versionName = "3.0"
+        versionCode = 5
+        versionName = "3.2"
     }
 
     signingConfigs {
