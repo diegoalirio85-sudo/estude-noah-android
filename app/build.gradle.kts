@@ -50,5 +50,6 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("org.apache.poi:poi-scratchpad:5.5.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
