@@ -12,8 +12,19 @@ Camadas pretendidas:
 - `material`
 - `pedagogy`
 
+O Android permanece o cliente do aluno. Segredos e processamento dependente de Java Desktop não pertencem ao APK.
+
 ## Backend
-Materiais, atividades, resultados, IA, autenticação e sincronização.
+
+O projeto JVM independente em `backend/` concentra processamento seguro de materiais, futura integração com IA, autenticação e sincronização.
+
+Responsabilidades iniciais:
+- `GET /health`;
+- extração servidor-side de PowerPoint binário `.ppt` com Apache POI HSLF;
+- contrato futuro para análise de URLs do YouTube;
+- processamento efêmero sem retenção permanente por padrão.
+
+O upload multipart da fase inicial é uma integração de desenvolvimento. A arquitetura de produção deverá usar objetos temporários em bucket privado, exclusão após processamento e lifecycle como proteção adicional.
 
 ## Área dos Pais
 Interface web/Sites.
