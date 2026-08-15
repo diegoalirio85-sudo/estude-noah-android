@@ -273,11 +273,10 @@ private object QuestionJson {
 
 
 private object MaterialQuestionGenerator {
-    private data class Candidate(val sentence: String, val answer: String)
-
-    private val wordRegex = Regex("[\\p{L}À-ÿ][\\p{L}À-ÿ'’-]{3,}")
     private val sentenceSplit = Regex("(?<=[.!?])\\s+|\\n+")
     private val spaces = Regex("\\s+")
+    private val wordRegex = Regex("[\\p{L}À-ÿ][\\p{L}À-ÿ'’-]{3,}")
+    private val numberRegex = Regex("\\b\\d{1,5}\\b")
     private val stopWords = setOf(
         "aquela", "aquele", "aqueles", "aquelas", "ainda", "algum", "alguma", "alguns", "algumas",
         "assim", "cada", "como", "com", "contra", "depois", "desde", "dessa", "desse", "desta", "deste",
@@ -286,99 +285,293 @@ private object MaterialQuestionGenerator {
         "muitas", "não", "nossa", "nosso", "numa", "nunca", "onde", "outra", "outro", "para", "pela", "pelas",
         "pelo", "pelos", "porque", "quando", "qual", "quais", "quem", "seja", "sendo", "será", "sobre", "também",
         "tem", "tendo", "toda", "todas", "todo", "todos", "uma", "umas", "uns", "vários", "várias", "isso", "isto",
-        "eram", "era", "foi", "são", "ser", "seu", "sua", "seus", "suas", "dos", "das", "nas", "nos", "por",
-        "principalmente", "geralmente", "normalmente", "formado", "formada", "formados", "formadas", "possui", "possuem",
-        "apresenta", "apresentam", "conhecido", "conhecida", "conhecidos", "conhecidas", "destaca", "destacam", "chamado",
-        "chamada", "chamados", "chamadas", "completa", "completam", "concentra", "concentram", "utiliza", "utilizam",
-        "permite", "permitem", "indica", "indicam", "acontece", "acontecem", "ocorre", "ocorrem", "existe", "existem",
-        "pode", "podem", "deve", "devem"
+        "eram", "era", "foi", "são", "ser", "seu", "sua", "seus", "suas", "dos", "das", "nas", "nos", "por"
     )
 
     fun generate(text: String, subject: Subject, count: Int = 5, salt: Long = 0L): List<Question> {
         val normalized = text.replace("\\r", "").trim()
         if (normalized.length < 140) return emptyList()
+        return if (subject == Subject.MATEMATICA) {
+            generateMath(normalized, count, salt)
+        } else {
+            generateTrueFalse(normalized, subject, count, salt)
+        }
+    }
 
-        val sentences = normalized
-            .split(sentenceSplit)
-            .map { it.replace(spaces, " ").trim().trim('•', '-', '–', '—') }
-            .filter { sentence ->
-                sentence.length in 35..340 && sentence.split(spaces).size >= 6
-            }
-            .distinctBy { it.lowercase(Locale.getDefault()) }
+    private fun cleanSentences(text: String): List<String> = text
+        .split(sentenceSplit)
+        .map { it.replace(spaces, " ").trim().trim('•', '-', '–', '—') }
+        .filter { it.length in 28..360 && it.split(spaces).size >= 5 }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
 
+    private fun contentWords(sentence: String): List<String> = wordRegex.findAll(sentence)
+        .map { it.value }
+        .filter { word ->
+            val lower = word.lowercase(Locale.getDefault())
+            lower !in stopWords && lower.length >= 4 && lower.any { it.isLetter() }
+        }
+        .toList()
+
+    private fun generateTrueFalse(text: String, subject: Subject, count: Int, salt: Long): List<Question> {
+        val sentences = cleanSentences(text)
         if (sentences.size < 2) return emptyList()
-
-        fun contentWords(sentence: String): List<String> = wordRegex.findAll(sentence)
-            .map { it.value }
-            .filter { word ->
-                val lower = word.lowercase(Locale.getDefault())
-                lower !in stopWords && lower.length >= 4 && lower.any { it.isLetter() }
-            }
-            .toList()
 
         val vocabulary = sentences
             .flatMap(::contentWords)
             .distinctBy { it.lowercase(Locale.getDefault()) }
 
-        if (vocabulary.size < 7) return emptyList()
-
-        val candidates = sentences.flatMap { sentence ->
-            contentWords(sentence)
-                .distinctBy { it.lowercase(Locale.getDefault()) }
-                .sortedWith(compareByDescending<String> { it.length }.thenBy { it.lowercase(Locale.getDefault()) })
-                .take(3)
-                .map { Candidate(sentence, it) }
-        }
-
-        if (candidates.size < count) return emptyList()
-
-        val seed = normalized.hashCode().toLong() xor subject.name.hashCode().toLong() xor salt
+        val seed = text.hashCode().toLong() xor subject.name.hashCode().toLong() xor salt
         val random = kotlin.random.Random(seed)
-        val result = mutableListOf<Question>()
-        val usedSentences = mutableMapOf<String, Int>()
+        val ordered = sentences.shuffled(random)
+        val results = mutableListOf<Question>()
 
-        for (candidate in candidates.shuffled(random)) {
-            if (result.size >= count) break
-            val sentenceKey = candidate.sentence.lowercase(Locale.getDefault())
-            if ((usedSentences[sentenceKey] ?: 0) >= 2) continue
-
-            val answerLower = candidate.answer.lowercase(Locale.getDefault())
-            val wordsInSentence = contentWords(candidate.sentence)
-                .map { it.lowercase(Locale.getDefault()) }
-                .toSet()
-
-            val preferred = vocabulary.filter { word ->
-                val lower = word.lowercase(Locale.getDefault())
-                lower != answerLower && lower !in wordsInSentence
+        repeat(count) { index ->
+            val source = ordered[index % ordered.size]
+            // Mantém um conjunto equilibrado: 3 verdadeiras e 2 falsas, variando a ordem a cada regeneração.
+            val shouldBeFalse = ((index + kotlin.math.abs((seed % 5).toInt())) % 5) in setOf(1, 3)
+            val statement = if (shouldBeFalse) makeFalseStatement(source, vocabulary, random) else source
+            val actuallyFalse = shouldBeFalse && statement != source
+            val correctIndex = if (actuallyFalse) 1 else 0
+            val normalizedStatement = statement.trim().let {
+                if (it.endsWith('.') || it.endsWith('!') || it.endsWith('?')) it else "$it."
             }
-            val fallback = vocabulary.filter { it.lowercase(Locale.getDefault()) != answerLower }
-            val pool = (preferred + fallback)
-                .distinctBy { it.lowercase(Locale.getDefault()) }
-                .sortedBy { kotlin.math.abs(it.length - candidate.answer.length) }
-                .take(14)
-                .shuffled(random)
 
-            val distractors = pool.take(3)
-            if (distractors.size < 3) continue
-
-            val blankSentence = candidate.sentence.replaceFirst(candidate.answer, "_____")
-            if (blankSentence == candidate.sentence) continue
-
-            val options = (distractors + candidate.answer).shuffled(random)
-            val correctIndex = options.indexOf(candidate.answer)
-            val id = "mat-${subject.name.lowercase()}-${candidate.sentence.hashCode()}-${candidate.answer.hashCode()}-${result.size}"
-
-            result += Question(
-                id = id,
-                prompt = "De acordo com o material, complete a informação:\n“$blankSentence”",
-                options = options,
+            results += Question(
+                id = "vf-${subject.name.lowercase()}-${source.hashCode()}-$index-$salt",
+                prompt = normalizedStatement,
+                options = listOf("Verdadeiro", "Falso"),
                 correctIndex = correctIndex,
-                explanation = "No material, a informação aparece assim: “${candidate.sentence}”"
+                explanation = if (correctIndex == 0) {
+                    "Verdadeiro. O material informa: “$source”"
+                } else {
+                    "Falso. No material, a informação correta é: “$source”"
+                }
             )
-            usedSentences[sentenceKey] = (usedSentences[sentenceKey] ?: 0) + 1
+        }
+        return results
+    }
+
+    private fun makeFalseStatement(source: String, vocabulary: List<String>, random: kotlin.random.Random): String {
+        val numberMatch = numberRegex.find(source)
+        if (numberMatch != null) {
+            val original = numberMatch.value.toIntOrNull()
+            if (original != null) {
+                val delta = if (original <= 10) 1 + random.nextInt(3) else 2 + random.nextInt(8)
+                val replacement = (original + delta).toString()
+                return source.replaceRange(numberMatch.range, replacement)
+            }
         }
 
-        return result.take(count)
+        val verbWords = "é|são|foi|foram|está|estão|tem|têm|possui|possuem|ocorre|ocorrem|pode|podem|deve|devem|gira|giram|vive|vivem|fica|ficam|produz|produzem|fornece|fornecem|usa|usam|utiliza|utilizam|apresenta|apresentam|pertence|pertencem|representa|representam|absorve|absorvem|realiza|realizam|forma|formam|causa|causam|indica|indicam|corresponde|correspondem|localiza|localizam|nasce|nascem|morre|morrem"
+        val alreadyNegative = Regex("\\bnão\\s+($verbWords)\\b", RegexOption.IGNORE_CASE).find(source)
+        if (alreadyNegative != null) {
+            val positiveVerb = alreadyNegative.groupValues[1]
+            return source.replaceRange(alreadyNegative.range, positiveVerb)
+        }
+
+        val verbRegex = Regex("\\b($verbWords)\\b", RegexOption.IGNORE_CASE)
+        val verb = verbRegex.find(source)
+        if (verb != null) {
+            return source.replaceRange(verb.range, "não ${verb.value}")
+        }
+
+        val sourceWords = contentWords(source)
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .sortedByDescending { it.length }
+
+        for (target in sourceWords) {
+            val targetLower = target.lowercase(Locale.getDefault())
+            val replacements = vocabulary.filter { candidate ->
+                val lower = candidate.lowercase(Locale.getDefault())
+                lower != targetLower && !source.contains(candidate, ignoreCase = true)
+            }
+            if (replacements.isNotEmpty()) {
+                val replacement = replacements.shuffled(random).first()
+                val regex = Regex("\\b${Regex.escape(target)}\\b", RegexOption.IGNORE_CASE)
+                val changed = regex.replaceFirst(source, replacement)
+                if (changed != source) return changed
+            }
+        }
+
+        return source
+    }
+
+    private enum class MathTopic { ADD, SUBTRACT, MULTIPLY, DIVIDE, FRACTION, PERCENT, AREA, PERIMETER, MIXED }
+
+    private fun generateMath(text: String, count: Int, salt: Long): List<Question> {
+        val lower = text.lowercase(Locale.getDefault())
+        val topic = when {
+            listOf("perímetro", "perimetro").any { it in lower } -> MathTopic.PERIMETER
+            listOf("área", "area", "quadrado", "retângulo", "retangulo").any { it in lower } -> MathTopic.AREA
+            listOf("porcent", "percent", "%").any { it in lower } -> MathTopic.PERCENT
+            listOf("fração", "fracao", "frações", "fracoes", "numerador", "denominador").any { it in lower } -> MathTopic.FRACTION
+            listOf("multiplica", "tabuada", "produto", "vezes").any { it in lower } -> MathTopic.MULTIPLY
+            listOf("divis", "quociente", "dividir").any { it in lower } -> MathTopic.DIVIDE
+            listOf("subtra", "diferença", "diferenca", "menos").any { it in lower } -> MathTopic.SUBTRACT
+            listOf("adição", "adicao", "soma", "somar").any { it in lower } -> MathTopic.ADD
+            else -> MathTopic.MIXED
+        }
+
+        val numbersFromMaterial = numberRegex.findAll(text)
+            .mapNotNull { it.value.toIntOrNull() }
+            .filter { it in 1..9999 }
+            .distinct()
+            .toList()
+
+        val seed = text.hashCode().toLong() xor salt xor 0x4D415448L
+        val random = kotlin.random.Random(seed)
+        val baseNumbers = if (numbersFromMaterial.isNotEmpty()) numbersFromMaterial else listOf(2, 3, 4, 5, 6, 8, 10, 12)
+
+        fun pick(index: Int, min: Int = 2, max: Int = 40): Int {
+            val raw = baseNumbers[index % baseNumbers.size]
+            val adjusted = if (raw in min..max) raw else min + kotlin.math.abs(raw % (max - min + 1))
+            return adjusted.coerceIn(min, max)
+        }
+
+        val results = mutableListOf<Question>()
+        repeat(count) { index ->
+            val effectiveTopic = if (topic == MathTopic.MIXED) {
+                listOf(MathTopic.ADD, MathTopic.SUBTRACT, MathTopic.MULTIPLY, MathTopic.DIVIDE, MathTopic.FRACTION)[index % 5]
+            } else topic
+
+            val a = pick(index * 2, 2, 50)
+            val b = pick(index * 2 + 1, 2, 25)
+            val question = when (effectiveTopic) {
+                MathTopic.ADD -> {
+                    val answer = a + b
+                    numericQuestion(
+                        id = "math-add-$index-$salt",
+                        prompt = "Resolva: $a + $b = ?",
+                        answer = answer,
+                        explanation = "$a + $b = $answer.",
+                        random = random
+                    )
+                }
+                MathTopic.SUBTRACT -> {
+                    val high = maxOf(a, b) + index
+                    val low = minOf(a, b)
+                    val answer = high - low
+                    numericQuestion(
+                        id = "math-sub-$index-$salt",
+                        prompt = "Resolva: $high − $low = ?",
+                        answer = answer,
+                        explanation = "$high − $low = $answer.",
+                        random = random
+                    )
+                }
+                MathTopic.MULTIPLY -> {
+                    val x = a.coerceIn(2, 12)
+                    val y = b.coerceIn(2, 12)
+                    val answer = x * y
+                    numericQuestion(
+                        id = "math-mul-$index-$salt",
+                        prompt = "Resolva: $x × $y = ?",
+                        answer = answer,
+                        explanation = "$x × $y = $answer.",
+                        random = random
+                    )
+                }
+                MathTopic.DIVIDE -> {
+                    val divisor = b.coerceIn(2, 12)
+                    val quotient = a.coerceIn(2, 12)
+                    val dividend = divisor * quotient
+                    numericQuestion(
+                        id = "math-div-$index-$salt",
+                        prompt = "Resolva: $dividend ÷ $divisor = ?",
+                        answer = quotient,
+                        explanation = "$dividend ÷ $divisor = $quotient.",
+                        random = random
+                    )
+                }
+                MathTopic.FRACTION -> {
+                    val denominator = (b.coerceIn(3, 12)).coerceAtLeast(3)
+                    val numerator = (a % (denominator - 1)).coerceAtLeast(1)
+                    val answer = "$numerator/$denominator"
+                    val distractors = linkedSetOf<String>()
+                    distractors += "$denominator/$numerator"
+                    distractors += "${(numerator + 1).coerceAtMost(denominator)}/$denominator"
+                    distractors += "$numerator/${denominator + 1}"
+                    distractors.remove(answer)
+                    val options = (distractors.take(3) + answer).shuffled(random)
+                    Question(
+                        id = "math-frac-$index-$salt",
+                        prompt = "Uma figura foi dividida em $denominator partes iguais e $numerator parte${if (numerator == 1) "" else "s"} foi${if (numerator == 1) "" else "ram"} destacada${if (numerator == 1) "" else "s"}. Qual fração representa a parte destacada?",
+                        options = options,
+                        correctIndex = options.indexOf(answer),
+                        explanation = "São $numerator partes destacadas de um total de $denominator: $answer."
+                    )
+                }
+                MathTopic.PERCENT -> {
+                    val percentages = listOf(10, 20, 25, 50)
+                    val pct = percentages[index % percentages.size]
+                    val base = ((a.coerceAtLeast(10) + 9) / 10) * 10
+                    val answer = base * pct / 100
+                    numericQuestion(
+                        id = "math-pct-$index-$salt",
+                        prompt = "Quanto é $pct% de $base?",
+                        answer = answer,
+                        explanation = "$pct% de $base = $answer.",
+                        random = random
+                    )
+                }
+                MathTopic.AREA -> {
+                    val width = a.coerceIn(2, 15)
+                    val height = b.coerceIn(2, 15)
+                    val answer = width * height
+                    numericQuestion(
+                        id = "math-area-$index-$salt",
+                        prompt = "Um retângulo mede $width unidades de comprimento e $height de largura. Qual é a área?",
+                        answer = answer,
+                        explanation = "Área do retângulo = $width × $height = $answer unidades quadradas.",
+                        random = random
+                    )
+                }
+                MathTopic.PERIMETER -> {
+                    val width = a.coerceIn(2, 15)
+                    val height = b.coerceIn(2, 15)
+                    val answer = 2 * (width + height)
+                    numericQuestion(
+                        id = "math-per-$index-$salt",
+                        prompt = "Um retângulo tem lados de $width e $height unidades. Qual é o perímetro?",
+                        answer = answer,
+                        explanation = "Perímetro = 2 × ($width + $height) = $answer unidades.",
+                        random = random
+                    )
+                }
+                MathTopic.MIXED -> error("Tema misto deve ser resolvido antes")
+            }
+            results += question
+        }
+        return results
+    }
+
+    private fun numericQuestion(
+        id: String,
+        prompt: String,
+        answer: Int,
+        explanation: String,
+        random: kotlin.random.Random
+    ): Question {
+        val distractors = linkedSetOf<Int>()
+        val offsets = listOf(-2, -1, 1, 2, 3, 5, -5).shuffled(random)
+        for (offset in offsets) {
+            val candidate = answer + offset
+            if (candidate >= 0 && candidate != answer) distractors += candidate
+            if (distractors.size >= 3) break
+        }
+        var fallback = answer + 6
+        while (distractors.size < 3) {
+            if (fallback >= 0 && fallback != answer) distractors += fallback
+            fallback += 2
+        }
+        val options = (distractors.take(3).map { it.toString() } + answer.toString()).shuffled(random)
+        return Question(
+            id = id,
+            prompt = prompt,
+            options = options,
+            correctIndex = options.indexOf(answer.toString()),
+            explanation = explanation
+        )
     }
 }
 
@@ -1032,6 +1225,7 @@ private fun QuizScreen(
     onNext: () -> Unit
 ) {
     val wrongSelections = remember(question.id) { mutableStateListOf<Int>() }
+    val trueFalse = question.options == listOf("Verdadeiro", "Falso")
 
     Scaffold(
         containerColor = Cream,
@@ -1049,7 +1243,11 @@ private fun QuizScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Questão $questionNumber de $totalQuestions", color = Muted, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (trueFalse) "Afirmação $questionNumber de $totalQuestions" else "Questão $questionNumber de $totalQuestions",
+                        color = Muted,
+                        fontWeight = FontWeight.Bold
+                    )
                     Text("${((questionNumber - 1) * 100 / totalQuestions)}%", color = Muted)
                 }
                 Spacer(Modifier.height(8.dp))
@@ -1119,7 +1317,11 @@ private fun QuizScreen(
                 if (solved) {
                     Spacer(Modifier.height(18.dp))
                     Button(onClick = onNext, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(18.dp)) {
-                        Text(if (questionNumber == totalQuestions) "Ver resultado" else "Próxima questão", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (questionNumber == totalQuestions) "Ver resultado" else if (trueFalse) "Próxima afirmação" else "Próxima questão",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
                 Spacer(Modifier.height(28.dp))
@@ -1342,7 +1544,7 @@ private fun ParentHomeScreen(
 
             Spacer(Modifier.height(24.dp))
             Button(onClick = onNewMaterial, modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(18.dp)) {
-                Text("Criar atividade a partir de texto", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Criar atividade a partir de material", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(10.dp))
             OutlinedButton(onClick = onNewQuestion, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(18.dp)) {
@@ -1355,7 +1557,7 @@ private fun ParentHomeScreen(
             Spacer(Modifier.height(10.dp))
             TextButton(onClick = onChangePin) { Text("Alterar PIN") }
             Spacer(Modifier.height(10.dp))
-            Text("Versão 3.2", color = Muted, fontSize = 12.sp)
+            Text("Versão 3.3", color = Muted, fontSize = 12.sp)
         }
     }
 }
@@ -1995,6 +2197,22 @@ private fun MaterialInputScreen(
                 isError = error != null
             )
 
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    text = ""
+                    importedFiles = ""
+                    fileStatus = null
+                    error = null
+                    voiceError = null
+                },
+                enabled = text.isNotBlank() || importedFiles.isNotBlank() || fileStatus != null,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Text("🗑️ Apagar material extraído", fontWeight = FontWeight.Bold)
+            }
+
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = {
@@ -2043,7 +2261,11 @@ private fun MaterialInputScreen(
                     val cleanText = text.trim()
                     val generated = MaterialQuestionGenerator.generate(cleanText, subject, count = 5)
                     if (generated.size < 5) {
-                        error = "Não consegui extrair 5 questões seguras desse material. Confira o texto extraído ou acrescente mais conteúdo por texto/voz."
+                        error = if (subject == Subject.MATEMATICA) {
+                            "Não consegui criar 5 questões de Matemática a partir desse material. Confira o conteúdo ou acrescente mais texto."
+                        } else {
+                            "Não consegui criar 5 afirmações seguras a partir desse material. Confira o texto extraído ou acrescente mais conteúdo."
+                        }
                     } else {
                         val cleanTitle = title.trim().ifBlank { "Material de ${subject.label}" }
                         onGenerate(subject, cleanTitle, cleanText, generated)
@@ -2053,11 +2275,18 @@ private fun MaterialInputScreen(
                 modifier = Modifier.fillMaxWidth().height(62.dp),
                 shape = RoundedCornerShape(18.dp)
             ) {
-                Text("Gerar 5 questões", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(
+                    if (subject == Subject.MATEMATICA) "Gerar 5 questões de Matemática" else "Gerar 5 afirmações (V/F)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
             }
             Spacer(Modifier.height(10.dp))
             Text(
-                "A geração das questões continua local e usa somente o texto disponível no campo acima.",
+                if (subject == Subject.MATEMATICA)
+                    "Em Matemática, o aplicativo identifica o assunto e cria exercícios matemáticos relacionados ao material."
+                else
+                    "Nas demais matérias, o aplicativo cria 5 afirmações sobre o material para Noah responder Verdadeiro ou Falso.",
                 color = Muted,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center
@@ -2097,7 +2326,13 @@ private fun MaterialPreviewScreen(
                     Text(subject.label, color = Green, fontWeight = FontWeight.Bold)
                     Text(title, fontSize = 25.sp, fontWeight = FontWeight.Black)
                     Spacer(Modifier.height(5.dp))
-                    Text("${questions.size} questões geradas a partir do texto", color = Muted)
+                    Text(
+                        if (subject == Subject.MATEMATICA)
+                            "${questions.size} questões de Matemática geradas a partir do material"
+                        else
+                            "${questions.size} afirmações de Verdadeiro/Falso geradas a partir do material",
+                        color = Muted
+                    )
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -2137,7 +2372,8 @@ private fun MaterialPreviewScreen(
 private fun GeneratedQuestionPreview(number: Int, question: Question) {
     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(20.dp)) {
         Column(Modifier.padding(18.dp)) {
-            Text("Questão $number", color = Blue, fontWeight = FontWeight.Bold)
+            val trueFalse = question.options == listOf("Verdadeiro", "Falso")
+            Text(if (trueFalse) "Afirmação $number" else "Questão $number", color = Blue, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
             Text(question.prompt, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(10.dp))
@@ -2150,7 +2386,11 @@ private fun GeneratedQuestionPreview(number: Int, question: Question) {
                 )
             }
             Spacer(Modifier.height(8.dp))
-            Text("Resposta correta destacada em verde.", color = Muted, fontSize = 12.sp)
+            Text(
+                if (trueFalse) "Classificação correta destacada em verde." else "Resposta correta destacada em verde.",
+                color = Muted,
+                fontSize = 12.sp
+            )
         }
     }
 }
