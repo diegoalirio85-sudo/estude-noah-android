@@ -4,6 +4,12 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import com.estudenoah.app.data.local.LocalPersistenceContract
+import com.estudenoah.app.domain.CustomQuestion
+import com.estudenoah.app.domain.HistoryEntry
+import com.estudenoah.app.domain.PreparedActivity
+import com.estudenoah.app.domain.Question
+import com.estudenoah.app.domain.Subject
 import android.os.Bundle
 import android.os.Build
 import android.os.ext.SdkExtensions
@@ -139,49 +145,6 @@ private enum class AppScreen {
     MATERIAL_INPUT,
     MATERIAL_PREVIEW
 }
-
-private enum class Subject(val label: String, val symbol: String) {
-    PORTUGUES("Português", "Aa"),
-    MATEMATICA("Matemática", "123"),
-    CIENCIAS("Ciências", "✦"),
-    HISTORIA("História", "⌛"),
-    GEOGRAFIA("Geografia", "◎")
-}
-
-private data class Question(
-    val id: String,
-    val prompt: String,
-    val options: List<String>,
-    val correctIndex: Int,
-    val explanation: String
-)
-
-private data class CustomQuestion(
-    val id: String,
-    val subject: Subject,
-    val prompt: String,
-    val options: List<String>,
-    val correctIndex: Int,
-    val explanation: String
-) {
-    fun asQuestion() = Question(id, prompt, options, correctIndex, explanation)
-}
-
-private data class HistoryEntry(
-    val subject: String,
-    val score: Int,
-    val total: Int,
-    val timestamp: Long
-)
-
-private data class PreparedActivity(
-    val id: String,
-    val title: String,
-    val subject: Subject,
-    val sourceText: String,
-    val questions: List<Question>,
-    val createdAt: Long
-)
 
 private object QuestionBank {
     private val questions = mapOf(
@@ -576,8 +539,8 @@ private object MaterialQuestionGenerator {
 }
 
 private object PreparedActivityStorage {
-    private const val PREFS = "estude_noah_prefs"
-    private const val KEY_PREPARED = "prepared_activity"
+    private const val PREFS = LocalPersistenceContract.PREFERENCES_NAME
+    private const val KEY_PREPARED = LocalPersistenceContract.PREPARED_ACTIVITY_KEY
 
     fun load(context: Context): PreparedActivity? {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -621,8 +584,8 @@ private object PreparedActivityStorage {
 }
 
 private object CustomQuestionStorage {
-    private const val PREFS = "estude_noah_prefs"
-    private const val KEY_CUSTOM = "custom_questions"
+    private const val PREFS = LocalPersistenceContract.PREFERENCES_NAME
+    private const val KEY_CUSTOM = LocalPersistenceContract.CUSTOM_QUESTIONS_KEY
 
     fun load(context: Context): List<CustomQuestion> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -686,8 +649,8 @@ private object CustomQuestionStorage {
 }
 
 private object ParentStorage {
-    private const val PREFS = "estude_noah_prefs"
-    private const val KEY_PIN = "parent_pin"
+    private const val PREFS = LocalPersistenceContract.PREFERENCES_NAME
+    private const val KEY_PIN = LocalPersistenceContract.PARENT_PIN_KEY
     private const val DEFAULT_PIN = "1234"
 
     fun getPin(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -702,8 +665,8 @@ private object ParentStorage {
 }
 
 private object HistoryStorage {
-    private const val PREFS = "estude_noah_prefs"
-    private const val KEY_HISTORY = "history"
+    private const val PREFS = LocalPersistenceContract.PREFERENCES_NAME
+    private const val KEY_HISTORY = LocalPersistenceContract.HISTORY_KEY
 
     fun load(context: Context): List<HistoryEntry> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
