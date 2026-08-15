@@ -4,7 +4,7 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import com.estudenoah.app.data.local.LocalPersistenceContract
+import com.estudenoah.app.data.local.LocalPreferencesRepository
 import com.estudenoah.app.domain.CustomQuestion
 import com.estudenoah.app.domain.HistoryEntry
 import com.estudenoah.app.domain.PreparedActivity
@@ -186,7 +186,7 @@ private object QuestionBank {
     )
 
     fun activity(context: Context, subject: Subject): List<Question> {
-        val custom = CustomQuestionStorage.load(context)
+        val custom = LocalPreferencesRepository(context).loadCustomQuestions()
             .filter { it.subject == subject }
             .map { it.asQuestion() }
             .shuffled()
@@ -538,187 +538,10 @@ private object MaterialQuestionGenerator {
     }
 }
 
-private object PreparedActivityStorage {
-    private const val PREFS = LocalPersistenceContract.PREFERENCES_NAME
-    private const val KEY_PREPARED = LocalPersistenceContract.PREPARED_ACTIVITY_KEY
-
-    fun load(context: Context): PreparedActivity? {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_PREPARED, null) ?: return null
-        return runCatching {
-            val item = JSONObject(raw)
-            val subject = Subject.valueOf(item.getString("subject"))
-            val questions = QuestionJson.decode(item.getJSONArray("questions").toString())
-            if (questions.isEmpty()) return@runCatching null
-            PreparedActivity(
-                id = item.getString("id"),
-                title = item.getString("title"),
-                subject = subject,
-                sourceText = item.optString("sourceText", ""),
-                questions = questions,
-                createdAt = item.optLong("createdAt", System.currentTimeMillis())
-            )
-        }.getOrNull()
-    }
-
-    fun save(context: Context, activity: PreparedActivity) {
-        val item = JSONObject()
-            .put("id", activity.id)
-            .put("title", activity.title)
-            .put("subject", activity.subject.name)
-            .put("sourceText", activity.sourceText)
-            .put("questions", JSONArray(QuestionJson.encode(activity.questions)))
-            .put("createdAt", activity.createdAt)
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_PREPARED, item.toString())
-            .apply()
-    }
-
-    fun clear(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .remove(KEY_PREPARED)
-            .apply()
-    }
-}
-
-private object CustomQuestionStorage {
-    private const val PREFS = LocalPersistenceContract.PREFERENCES_NAME
-    private const val KEY_CUSTOM = LocalPersistenceContract.CUSTOM_QUESTIONS_KEY
-
-    fun load(context: Context): List<CustomQuestion> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_CUSTOM, "[]") ?: "[]"
-        return runCatching {
-            val array = JSONArray(raw)
-            buildList {
-                for (i in 0 until array.length()) {
-                    val item = array.getJSONObject(i)
-                    val subject = runCatching { Subject.valueOf(item.getString("subject")) }.getOrNull() ?: continue
-                    val optionArray = item.getJSONArray("options")
-                    val options = buildList {
-                        for (j in 0 until optionArray.length()) add(optionArray.getString(j))
-                    }
-                    if (options.size == 4) {
-                        add(
-                            CustomQuestion(
-                                id = item.getString("id"),
-                                subject = subject,
-                                prompt = item.getString("prompt"),
-                                options = options,
-                                correctIndex = item.getInt("correctIndex"),
-                                explanation = item.optString("explanation", "")
-                            )
-                        )
-                    }
-                }
-            }
-        }.getOrElse { emptyList() }
-    }
-
-    private fun save(context: Context, questions: List<CustomQuestion>) {
-        val array = JSONArray()
-        questions.forEach { question ->
-            array.put(
-                JSONObject()
-                    .put("id", question.id)
-                    .put("subject", question.subject.name)
-                    .put("prompt", question.prompt)
-                    .put("options", JSONArray(question.options))
-                    .put("correctIndex", question.correctIndex)
-                    .put("explanation", question.explanation)
-            )
-        }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_CUSTOM, array.toString())
-            .apply()
-    }
-
-    fun upsert(context: Context, question: CustomQuestion) {
-        val current = load(context).toMutableList()
-        val index = current.indexOfFirst { it.id == question.id }
-        if (index >= 0) current[index] = question else current.add(0, question)
-        save(context, current)
-    }
-
-    fun delete(context: Context, id: String) {
-        save(context, load(context).filterNot { it.id == id })
-    }
-}
-
-private object ParentStorage {
-    private const val PREFS = LocalPersistenceContract.PREFERENCES_NAME
-    private const val KEY_PIN = LocalPersistenceContract.PARENT_PIN_KEY
-    private const val DEFAULT_PIN = "1234"
-
-    fun getPin(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        .getString(KEY_PIN, DEFAULT_PIN) ?: DEFAULT_PIN
-
-    fun setPin(context: Context, pin: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_PIN, pin)
-            .apply()
-    }
-}
-
-private object HistoryStorage {
-    private const val PREFS = LocalPersistenceContract.PREFERENCES_NAME
-    private const val KEY_HISTORY = LocalPersistenceContract.HISTORY_KEY
-
-    fun load(context: Context): List<HistoryEntry> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_HISTORY, "[]") ?: "[]"
-        return runCatching {
-            val array = JSONArray(raw)
-            buildList {
-                for (i in 0 until array.length()) {
-                    val item = array.getJSONObject(i)
-                    add(
-                        HistoryEntry(
-                            subject = item.getString("subject"),
-                            score = item.getInt("score"),
-                            total = item.getInt("total"),
-                            timestamp = item.getLong("timestamp")
-                        )
-                    )
-                }
-            }.sortedByDescending { it.timestamp }
-        }.getOrElse { emptyList() }
-    }
-
-    fun add(context: Context, entry: HistoryEntry) {
-        val current = load(context).toMutableList()
-        current.add(0, entry)
-        val array = JSONArray()
-        current.take(50).forEach {
-            array.put(
-                JSONObject()
-                    .put("subject", it.subject)
-                    .put("score", it.score)
-                    .put("total", it.total)
-                    .put("timestamp", it.timestamp)
-            )
-        }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_HISTORY, array.toString())
-            .apply()
-    }
-
-    fun clear(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .remove(KEY_HISTORY)
-            .apply()
-    }
-}
-
 @Composable
 private fun EstudeNoahApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val localPreferences = LocalPreferencesRepository(context)
     var screenName by rememberSaveable { mutableStateOf(AppScreen.HOME.name) }
     var subjectName by rememberSaveable { mutableStateOf<String?>(null) }
     var questionIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -820,8 +643,8 @@ private fun EstudeNoahApp() {
     Surface(modifier = Modifier.fillMaxSize(), color = Cream) {
         when (screen) {
             AppScreen.HOME -> HomeScreen(
-                history = HistoryStorage.load(context),
-                preparedActivity = PreparedActivityStorage.load(context),
+                history = localPreferences.loadHistory(),
+                preparedActivity = localPreferences.loadPreparedActivity(),
                 onStart = { screenName = AppScreen.SUBJECTS.name },
                 onHistory = { screenName = AppScreen.HISTORY.name },
                 onParents = { screenName = AppScreen.PARENT_PIN.name },
@@ -860,8 +683,7 @@ private fun EstudeNoahApp() {
                         onNext = {
                             if (questionIndex == activeQuestions.lastIndex) {
                                 finalScore = score
-                                HistoryStorage.add(
-                                    context,
+                                localPreferences.addHistory(
                                     HistoryEntry(
                                         subject = historySubjectLabel.ifBlank { subject.label },
                                         score = score,
@@ -870,7 +692,7 @@ private fun EstudeNoahApp() {
                                     )
                                 )
                                 if (activePreparedId != null) {
-                                    PreparedActivityStorage.clear(context)
+                                    localPreferences.clearPreparedActivity()
                                     activePreparedId = null
                                 }
                                 screenName = AppScreen.RESULT.name
@@ -895,22 +717,22 @@ private fun EstudeNoahApp() {
             )
 
             AppScreen.HISTORY -> HistoryScreen(
-                entries = HistoryStorage.load(context),
+                entries = localPreferences.loadHistory(),
                 onBack = ::goHome,
                 onClear = {
-                    HistoryStorage.clear(context)
+                    localPreferences.clearHistory()
                     screenName = AppScreen.HOME.name
                 }
             )
 
             AppScreen.PARENT_PIN -> ParentPinScreen(
-                expectedPin = ParentStorage.getPin(context),
+                expectedPin = localPreferences.getParentPin(),
                 onBack = ::goHome,
                 onSuccess = { screenName = AppScreen.PARENT_HOME.name }
             )
 
             AppScreen.PARENT_HOME -> ParentHomeScreen(
-                questions = CustomQuestionStorage.load(context),
+                questions = localPreferences.loadCustomQuestions(),
                 onBack = ::goHome,
                 onNewQuestion = {
                     editingQuestionId = null
@@ -922,7 +744,7 @@ private fun EstudeNoahApp() {
             )
 
             AppScreen.PARENT_QUESTIONS -> ParentQuestionsScreen(
-                initialQuestions = CustomQuestionStorage.load(context),
+                initialQuestions = localPreferences.loadCustomQuestions(),
                 onBack = { screenName = AppScreen.PARENT_HOME.name },
                 onNew = {
                     editingQuestionId = null
@@ -932,18 +754,18 @@ private fun EstudeNoahApp() {
                     editingQuestionId = id
                     screenName = AppScreen.QUESTION_EDITOR.name
                 },
-                onDelete = { id -> CustomQuestionStorage.delete(context, id) }
+                onDelete = { id -> localPreferences.deleteCustomQuestion(id) }
             )
 
             AppScreen.QUESTION_EDITOR -> {
                 val editing = editingQuestionId?.let { id ->
-                    CustomQuestionStorage.load(context).firstOrNull { it.id == id }
+                    localPreferences.loadCustomQuestions().firstOrNull { it.id == id }
                 }
                 QuestionEditorScreen(
                     editing = editing,
                     onBack = { screenName = AppScreen.PARENT_QUESTIONS.name },
                     onSave = { question ->
-                        CustomQuestionStorage.upsert(context, question)
+                        localPreferences.upsertCustomQuestion(question)
                         editingQuestionId = null
                         screenName = AppScreen.PARENT_QUESTIONS.name
                     }
@@ -984,8 +806,7 @@ private fun EstudeNoahApp() {
                         if (regenerated.size == 5) materialQuestionsJson = QuestionJson.encode(regenerated)
                     },
                     onSave = {
-                        PreparedActivityStorage.save(
-                            context,
+                        localPreferences.savePreparedActivity(
                             PreparedActivity(
                                 id = UUID.randomUUID().toString(),
                                 title = materialTitle,
@@ -1009,10 +830,10 @@ private fun EstudeNoahApp() {
             }
 
             AppScreen.CHANGE_PIN -> ChangePinScreen(
-                currentPin = ParentStorage.getPin(context),
+                currentPin = localPreferences.getParentPin(),
                 onBack = { screenName = AppScreen.PARENT_HOME.name },
                 onSave = { pin ->
-                    ParentStorage.setPin(context, pin)
+                    localPreferences.setParentPin(pin)
                     screenName = AppScreen.PARENT_HOME.name
                 }
             )
