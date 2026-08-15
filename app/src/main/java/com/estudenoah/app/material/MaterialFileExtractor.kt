@@ -9,6 +9,9 @@ import android.os.ext.SdkExtensions
 import android.provider.OpenableColumns
 import java.io.ByteArrayOutputStream
 import java.util.Locale
+import org.apache.poi.hslf.usermodel.HSLFSlideShow
+import org.apache.poi.hslf.usermodel.HSLFSlideShowImpl
+import org.apache.poi.hslf.usermodel.HSLFTextParagraph
 import java.util.zip.ZipInputStream
 
 internal data class ImportedMaterialResult(
@@ -62,16 +65,17 @@ internal object MaterialFileExtractor {
                     val text = extractZipXml(context, uri) { entry -> entry == "content.xml" }
                     resultFromText(name, ext, text, "Texto extraído do ODT.")
                 }
-                "doc", "ppt" -> {
+                "doc" -> {
                     val bytes = readAllLimited(context, uri, 16 * 1024 * 1024)
                     val text = extractLegacyPrintableText(bytes)
                     resultFromText(
                         name,
                         ext,
                         text,
-                        if (text.length >= 140) "Texto recuperado do formato antigo .$ext (extração experimental). Revise antes de gerar." else "Arquivo .$ext selecionado, mas não foi possível recuperar texto suficiente. Prefira salvar como ${if (ext == "doc") "DOCX" else "PPTX"}."
+                        if (text.length >= 140) "Texto recuperado do formato antigo .doc (extração experimental). Revise antes de gerar." else "Arquivo .doc selecionado, mas não foi possível recuperar texto suficiente. Prefira salvar como DOCX."
                     )
                 }
+                "ppt" -> extractLegacyPpt(context, uri, name, ext)
                 "pdf" -> extractPdf(context, uri, name, ext)
                 "mp3", "mp4", "avi" -> ImportedMaterialResult(
                     fileName = name,
@@ -91,6 +95,25 @@ internal object MaterialFileExtractor {
                 usableForGeneration = false
             )
         }
+    }
+
+    private fun extractLegacyPpt(
+        context: Context,
+        uri: Uri,
+        name: String,
+        ext: String
+    ): ImportedMaterialResult {
+        val text = context.contentResolver.openInputStream(uri)?.use { input ->
+            HSLFSlideShow(HSLFSlideShowImpl(input)).use { slideShow ->
+                slideShow.slides.joinToString("\n\n") { slide ->
+                    slide.textParagraphs.joinToString("\n") { paragraphs ->
+                        HSLFTextParagraph.getText(paragraphs)
+                    }
+                }
+            }
+        } ?: error("Não foi possível abrir o arquivo")
+
+        return resultFromText(name, ext, text, "Texto extraído dos slides do PPT.")
     }
 
     private fun resultFromText(name: String, ext: String, raw: String, successMessage: String): ImportedMaterialResult {
