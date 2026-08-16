@@ -5,13 +5,15 @@ import java.util.List;
 public record VideoAnalysis(
         String sourceType,
         String sourceUrl,
-        String title,
+        String videoTitle,
         String subject,
         String summary,
-        List<Theme> themes
+        List<Theme> themes,
+        List<String> warnings
 ) {
     public VideoAnalysis {
         themes = List.copyOf(themes);
+        warnings = List.copyOf(warnings);
     }
 
     public record Theme(
@@ -20,7 +22,7 @@ public record VideoAnalysis(
             List<String> concepts,
             List<String> relationships,
             List<String> likelyMisconceptions,
-            List<String> evidence
+            List<Evidence> evidence
     ) {
         public Theme {
             learningObjectives = List.copyOf(learningObjectives);
@@ -29,5 +31,8 @@ public record VideoAnalysis(
             likelyMisconceptions = List.copyOf(likelyMisconceptions);
             evidence = List.copyOf(evidence);
         }
+    }
+
+    public record Evidence(String description, String timestamp) {
     }
 }
