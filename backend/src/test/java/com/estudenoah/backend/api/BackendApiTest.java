@@ -2,6 +2,7 @@ package com.estudenoah.backend.api;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -12,14 +13,20 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import com.estudenoah.backend.material.LegacyPptExtractor;
+import com.estudenoah.backend.video.VideoAnalysisService;
+import com.estudenoah.backend.video.YoutubeUrlNormalizer;
 
-@WebMvcTest({HealthController.class, MaterialController.class, ApiExceptionHandler.class})
+@WebMvcTest({HealthController.class, MaterialController.class, YoutubeMaterialController.class,
+        YoutubeUrlNormalizer.class, ApiExceptionHandler.class})
 class BackendApiTest {
     @Autowired
     private MockMvc mockMvc;
 
     @MockitoBean
     private LegacyPptExtractor extractor;
+
+    @MockitoBean
+    private VideoAnalysisService videoAnalysisService;
 
     @Test
     void healthDoesNotDependOnExternalServices() throws Exception {
@@ -45,5 +52,23 @@ class BackendApiTest {
         mockMvc.perform(multipart("/v1/materials/ppt/extract").file(upload))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("empty_file"));
+    }
+
+    @Test
+    void rejectsUnsafeYoutubeDomainBeforeCallingProvider() throws Exception {
+        mockMvc.perform(post("/v1/materials/youtube/analyze")
+                        .contentType("application/json")
+                        .content("{\"url\":\"https://youtube.com.evil.example/watch?v=AbCdEf123_-\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("invalid_youtube_url"));
+    }
+
+    @Test
+    void rejectsMissingYoutubeUrl() throws Exception {
+        mockMvc.perform(post("/v1/materials/youtube/analyze")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("invalid_youtube_url"));
     }
 }
