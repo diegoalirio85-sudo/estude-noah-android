@@ -22,7 +22,8 @@ public class GeminiConfiguration {
     }
 
     @Bean
-    GeminiInteractionsClient geminiInteractionsClient(ObjectMapper mapper, GeminiSettings settings) {
+    GeminiInteractionsClient geminiInteractionsClient(ObjectMapper mapper, GeminiSettings settings,
+                                                       Environment environment) {
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .followRedirects(HttpClient.Redirect.NEVER)
