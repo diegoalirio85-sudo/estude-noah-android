@@ -11,7 +11,8 @@ O backend analisa vídeos **públicos** do YouTube com Gemini, considerando fala
 3. A URL é reduzida ao formato canônico `https://www.youtube.com/watch?v=VIDEO_ID`.
 4. O backend envia prompt e URI de vídeo à Gemini Interactions API.
 5. Gemini processa áudio e vídeo e responde conforme JSON Schema.
-6. O backend valida novamente o contrato e devolve somente o modelo público.
+6. O backend aplica ao resultado o tipo e a URL canônica já validados no servidor, sem depender de o modelo repetir metadados de entrada.
+7. O backend valida novamente o contrato e devolve somente o modelo público.
 
 Não existe download, transcodificação, extração de áudio, arquivo temporário, cache ou persistência do vídeo ou da análise. A interação é enviada com `store=false`.
 
