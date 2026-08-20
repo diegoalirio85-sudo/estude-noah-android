@@ -38,7 +38,7 @@ Não Matemática responde com `activityType: TRUE_FALSE`; Matemática responde c
 
 ## Prompt e Structured Output
 
-`PedagogicalActivityPrompt` possui versão `c2-v1`. Ele declara a análise recebida como fonte exclusiva, proíbe fatos externos e geração literal, exige erros conceituais plausíveis, adaptação ao ano escolar, explicações/evidências e separação entre Matemática e disciplinas conceituais.
+`PedagogicalActivityPrompt` possui versão `c2.1-v1`. Ele declara a análise recebida como fonte exclusiva, proíbe fatos externos e geração literal, exige erros conceituais plausíveis, adaptação ao ano escolar, explicações/evidências e separação entre Matemática e disciplinas conceituais.
 
 O cliente Gemini já existente envia `store=false`, usa `GEMINI_API_KEY` e `GEMINI_MODEL` e solicita JSON conforme `activity-generation-schema.json`. Não há parsing de texto livre nem uma segunda configuração de credencial. O backend nunca devolve prompt interno, resposta bruta do provedor, chave ou stack trace.
 
@@ -55,6 +55,12 @@ Depois do schema, `ActivityValidator` exige:
 - ausência de enunciados e explicações idênticos ou muito semelhantes.
 
 A deduplicação normaliza caixa, acentos, pontuação e espaços e aplica similaridade determinística de Jaccard entre palavras, com limiar de 0,86. Não usa embeddings nem armazenamento.
+
+## Diversidade cognitiva C2.1
+
+Cada conjunto conceitual de cinco itens admite no máximo dois `source_example`, exige ao menos dois itens `application`/`relation` e, quando há `likelyMisconceptions`, ao menos uma falsa `misconception`. Os metadados `cognitiveDemand` e `constructionType` tornam essa auditoria determinística. O validador limita `easy` a um item, preserva o equilíbrio V/F, detecta cópia por sobreposição de tokens e rejeita inversões mecânicas detectáveis.
+
+Se somente a validação pedagógica da primeira resposta falhar, o backend faz uma única nova chamada com o motivo objetivo. Autenticação, quota, timeout, entrada inválida e uma segunda saída inválida não geram novas tentativas.
 
 Uma análise sem temas, objetivos, conceitos ou evidências suficientes falha com `422 insufficient_material`. Uma atividade inconsistente não é devolvida parcialmente: falha como `502 invalid_generated_activity`. Warnings não substituem as invariantes mínimas.
 

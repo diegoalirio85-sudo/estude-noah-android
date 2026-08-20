@@ -32,3 +32,7 @@ Antes de publicar:
 ## Motor C2
 
 O backend transforma a análise estruturada em atividade com prompt versionado, JSON Schema e auditoria determinística. Para V/F, exige cinco itens por tema e equilíbrio 2/3 ou 3/2. Para Matemática, exige problemas inéditos com resposta e solução, sem V/F. Material insuficiente não é completado com conhecimento externo.
+
+## Diversidade C2.1
+
+Em cinco itens conceituais, no máximo dois podem depender diretamente de exemplo da fonte; pelo menos dois exigem aplicação ou relação e pelo menos uma falsa trata um equívoco plausível quando ele foi identificado. A dificuldade preferida é um `easy`, três `medium` e até um `hard`, sempre adequada ao ano. Falsas por negação ou inversão mecânica e cópias de evidence são rejeitadas quando detectáveis. Uma única regeneração pode receber feedback pedagógico objetivo; persistindo a inadequação, o backend falha de forma controlada.
