@@ -148,9 +148,44 @@ class ActivityValidatorTest {
     }
 
     private static GeneratedActivity.Question vf(String theme, int index, boolean answer) {
+        String construction = index == 1 ? "concept" : index == 2 ? "misconception" : index == 4 ? "relation" : "application";
+        String demand = index == 1 ? "understanding" : index == 2 || index == 5 ? "analysis" : "application";
         return new GeneratedActivity.Question("Relação conceitual de " + theme + " número " + index, answer,
                 "Explicação pedagógica de " + theme + " número " + index, List.of("Evidência " + index), theme,
-                "Compreender objetivo " + index, index == 5 ? "hard" : "medium", null, null, null, null);
+                "Compreender objetivo " + index, index == 1 ? "easy" : index == 5 ? "hard" : "medium",
+                null, null, null, null, demand, construction);
+    }
+
+    @Test
+    void rejectsMoreThanOneEasyQuestion() {
+        List<GeneratedActivity.Question> questions = new ArrayList<>(vfTheme("Tema").questions());
+        var q = questions.get(1);
+        questions.set(1, new GeneratedActivity.Question(q.statement(), q.answer(), q.explanation(), q.evidence(), q.theme(),
+                q.learningObjective(), "easy", null, null, null, null, q.cognitiveDemand(), q.constructionType()));
+        assertInvalid(request("Ciências", analysis(theme("Tema"))), activity("Ciências", "TRUE_FALSE", "Tema", questions));
+    }
+
+    @Test
+    void rejectsSetWithoutApplicationOrRelation() {
+        List<GeneratedActivity.Question> questions = new ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            var q = vf("Tema", i, i % 2 == 1);
+            questions.add(new GeneratedActivity.Question(q.statement(), q.answer(), q.explanation(), q.evidence(), q.theme(),
+                    q.learningObjective(), q.difficulty(), null, null, null, null,
+                    i == 2 ? "analysis" : "understanding", i == 2 ? "misconception" : "concept"));
+        }
+        assertInvalid(request("Ciências", analysis(theme("Tema"))), activity("Ciências", "TRUE_FALSE", "Tema", questions));
+    }
+
+    @Test
+    void rejectsThreeQuestionsDeclaredAsSourceExamples() {
+        List<GeneratedActivity.Question> questions = new ArrayList<>(vfTheme("Tema").questions());
+        for (int i = 0; i < 3; i++) {
+            var q = questions.get(i);
+            questions.set(i, new GeneratedActivity.Question(q.statement(), q.answer(), q.explanation(), q.evidence(), q.theme(),
+                    q.learningObjective(), q.difficulty(), null, null, null, null, q.cognitiveDemand(), "source_example"));
+        }
+        assertInvalid(request("Ciências", analysis(theme("Tema"))), activity("Ciências", "TRUE_FALSE", "Tema", questions));
     }
 
     private static List<GeneratedActivity.Question> mathQuestions() {

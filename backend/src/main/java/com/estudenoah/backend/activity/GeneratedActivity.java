@@ -31,8 +31,17 @@ public record GeneratedActivity(
             String problem,
             String mathAnswer,
             List<String> solutionSteps,
-            String skill
+            String skill,
+            String cognitiveDemand,
+            String constructionType
     ) {
+        public Question(String statement, Boolean answer, String explanation, List<String> evidence, String theme,
+                        String learningObjective, String difficulty, String problem, String mathAnswer,
+                        List<String> solutionSteps, String skill) {
+            this(statement, answer, explanation, evidence, theme, learningObjective, difficulty, problem, mathAnswer,
+                    solutionSteps, skill, problem == null ? "application" : null,
+                    problem == null ? "application" : null);
+        }
         public Question {
             evidence = evidence == null ? null : List.copyOf(evidence);
             solutionSteps = solutionSteps == null ? null : List.copyOf(solutionSteps);

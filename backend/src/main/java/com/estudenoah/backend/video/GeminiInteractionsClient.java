@@ -78,11 +78,15 @@ public final class GeminiInteractionsClient {
     }
 
     public GeneratedActivity generateActivity(ActivityGenerationRequest generationRequest) {
+        return generateActivity(generationRequest, null);
+    }
+
+    public GeneratedActivity generateActivity(ActivityGenerationRequest generationRequest, String pedagogicalFeedback) {
         if (settings.apiKey().isBlank()) {
             throw new ActivityGenerationException(ActivityGenerationException.Kind.CONFIGURATION,
                     "A geração de atividades não está configurada.");
         }
-        HttpRequest request = activityRequest(generationRequest);
+        HttpRequest request = activityRequest(generationRequest, pedagogicalFeedback);
         HttpResponse<String> response;
         try {
             response = send(request);
@@ -120,13 +124,13 @@ public final class GeminiInteractionsClient {
                 .build();
     }
 
-    private HttpRequest activityRequest(ActivityGenerationRequest generationRequest) {
+    private HttpRequest activityRequest(ActivityGenerationRequest generationRequest, String pedagogicalFeedback) {
         ObjectNode root = mapper.createObjectNode();
         root.put("model", settings.model());
         root.put("store", false);
         root.putArray("input").addObject().put("type", "text")
                 .put("text", PedagogicalActivityPrompt.text(generationRequest,
-                        mapper.writeValueAsString(generationRequest)));
+                        mapper.writeValueAsString(generationRequest), pedagogicalFeedback));
         root.putObject("generation_config").put("temperature", 0.2).put("max_output_tokens", 16384);
         root.putObject("response_format").put("type", "text").put("mime_type", "application/json")
                 .set("schema", activitySchema);
