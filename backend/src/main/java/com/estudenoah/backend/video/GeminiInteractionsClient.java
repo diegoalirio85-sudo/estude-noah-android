@@ -1,5 +1,9 @@
 package com.estudenoah.backend.video;
 
+import com.estudenoah.backend.activity.ActivityGenerationException;
+import com.estudenoah.backend.activity.ActivityGenerationRequest;
+import com.estudenoah.backend.activity.GeneratedActivity;
+import com.estudenoah.backend.activity.PedagogicalActivityPrompt;
 import com.estudenoah.backend.video.GeminiConfiguration.GeminiSettings;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -18,7 +22,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-final class GeminiInteractionsClient {
+public final class GeminiInteractionsClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(GeminiInteractionsClient.class);
     private final HttpClient httpClient;
     private final ObjectMapper mapper;
@@ -26,6 +30,7 @@ final class GeminiInteractionsClient {
     private final URI endpoint;
     private final Duration requestTimeout;
     private final JsonNode responseSchema;
+    private final JsonNode activitySchema;
     private final Path diagnosticPath;
 
     GeminiInteractionsClient(HttpClient httpClient, ObjectMapper mapper, GeminiSettings settings,
@@ -47,6 +52,12 @@ final class GeminiInteractionsClient {
         } catch (IOException error) {
             throw new IllegalStateException("Não foi possível carregar o schema de análise.", error);
         }
+        try (InputStream input = getClass().getResourceAsStream("/activity-generation-schema.json")) {
+            if (input == null) throw new IOException("activity schema resource missing");
+            this.activitySchema = mapper.readTree(input);
+        } catch (IOException error) {
+            throw new IllegalStateException("Não foi possível carregar o schema de atividades.", error);
+        }
     }
 
     VideoAnalysis analyze(URI youtubeUrl) {
@@ -66,6 +77,30 @@ final class GeminiInteractionsClient {
         return parse(response, youtubeUrl);
     }
 
+    public GeneratedActivity generateActivity(ActivityGenerationRequest generationRequest) {
+        if (settings.apiKey().isBlank()) {
+            throw new ActivityGenerationException(ActivityGenerationException.Kind.CONFIGURATION,
+                    "A geração de atividades não está configurada.");
+        }
+        HttpRequest request = activityRequest(generationRequest);
+        HttpResponse<String> response;
+        try {
+            response = send(request);
+            if (isTransient(response.statusCode())) response = send(request);
+        } catch (GeminiProviderException error) {
+            throw activityError(error);
+        }
+        if (response.statusCode() / 100 != 2) throw activityProviderError(response.statusCode());
+        try {
+            String output = interactionOutput(response.body());
+            if (output == null || output.isBlank()) throw new IllegalArgumentException("missing output");
+            return mapper.readValue(output, GeneratedActivity.class);
+        } catch (RuntimeException error) {
+            throw new ActivityGenerationException(ActivityGenerationException.Kind.INVALID_RESPONSE,
+                    "O provedor retornou uma atividade inválida.", error);
+        }
+    }
+
     private HttpRequest request(URI youtubeUrl) {
         ObjectNode root = mapper.createObjectNode();
         root.put("model", settings.model());
@@ -77,6 +112,24 @@ final class GeminiInteractionsClient {
         ObjectNode format = root.putObject("response_format");
         format.put("type", "text").put("mime_type", "application/json").set("schema", responseSchema);
 
+        return HttpRequest.newBuilder(endpoint)
+                .timeout(requestTimeout)
+                .header("Content-Type", "application/json")
+                .header("x-goog-api-key", settings.apiKey())
+                .POST(HttpRequest.BodyPublishers.ofString(root.toString()))
+                .build();
+    }
+
+    private HttpRequest activityRequest(ActivityGenerationRequest generationRequest) {
+        ObjectNode root = mapper.createObjectNode();
+        root.put("model", settings.model());
+        root.put("store", false);
+        root.putArray("input").addObject().put("type", "text")
+                .put("text", PedagogicalActivityPrompt.text(generationRequest,
+                        mapper.writeValueAsString(generationRequest)));
+        root.putObject("generation_config").put("temperature", 0.2).put("max_output_tokens", 16384);
+        root.putObject("response_format").put("type", "text").put("mime_type", "application/json")
+                .set("schema", activitySchema);
         return HttpRequest.newBuilder(endpoint)
                 .timeout(requestTimeout)
                 .header("Content-Type", "application/json")
@@ -138,6 +191,24 @@ final class GeminiInteractionsClient {
             writeDiagnostic(response, invalid.getMessage());
             throw invalid;
         }
+    }
+
+    private String interactionOutput(String body) {
+        JsonNode interaction = mapper.readTree(body);
+        if (!"completed".equals(interaction.path("status").asText())) return null;
+        StringBuilder output = new StringBuilder();
+        boolean foundModelOutput = false;
+        for (JsonNode step : interaction.path("steps")) {
+            if (!"model_output".equals(step.path("type").asText())) continue;
+            if (foundModelOutput) output.setLength(0);
+            foundModelOutput = true;
+            for (JsonNode content : step.path("content")) {
+                if ("text".equals(content.path("type").asText()) && content.path("text").isTextual()) {
+                    output.append(content.path("text").asText());
+                }
+            }
+        }
+        return foundModelOutput ? output.toString() : null;
     }
 
     private static void validate(VideoAnalysis result, URI normalizedUrl) {
@@ -270,5 +341,27 @@ final class GeminiInteractionsClient {
             default -> GeminiProviderException.Kind.UNAVAILABLE;
         };
         return new GeminiProviderException(kind, "Não foi possível analisar o vídeo no provedor.");
+    }
+
+    private static ActivityGenerationException activityError(GeminiProviderException error) {
+        ActivityGenerationException.Kind kind = switch (error.kind()) {
+            case CONFIGURATION -> ActivityGenerationException.Kind.CONFIGURATION;
+            case AUTHENTICATION, VIDEO_INACCESSIBLE -> ActivityGenerationException.Kind.AUTHENTICATION;
+            case QUOTA -> ActivityGenerationException.Kind.QUOTA;
+            case TIMEOUT -> ActivityGenerationException.Kind.TIMEOUT;
+            case INVALID_RESPONSE -> ActivityGenerationException.Kind.INVALID_RESPONSE;
+            case UNAVAILABLE -> ActivityGenerationException.Kind.UNAVAILABLE;
+        };
+        return new ActivityGenerationException(kind, "Não foi possível gerar a atividade.", error);
+    }
+
+    private static ActivityGenerationException activityProviderError(int status) {
+        ActivityGenerationException.Kind kind = switch (status) {
+            case 401, 403 -> ActivityGenerationException.Kind.AUTHENTICATION;
+            case 408, 504 -> ActivityGenerationException.Kind.TIMEOUT;
+            case 429 -> ActivityGenerationException.Kind.QUOTA;
+            default -> ActivityGenerationException.Kind.UNAVAILABLE;
+        };
+        return new ActivityGenerationException(kind, "Não foi possível gerar a atividade no provedor.");
     }
 }

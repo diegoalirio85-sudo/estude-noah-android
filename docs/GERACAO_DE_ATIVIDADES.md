@@ -22,3 +22,7 @@ Por item:
 
 ## Revisão dos pais
 Permitir editar, excluir, regenerar, mudar dificuldade e aprovar.
+
+## Implementação backend C2
+
+O endpoint `POST /v1/activities/generate` recebe `grade`, `subject`, `source` e análise pedagógica estruturada. A geração usa Structured Output e passa por validação de quantidade, campos obrigatórios, dificuldade, equilíbrio V/F, regras de Matemática e duplicação textual. Saídas incompletas não são entregues como válidas. Consulte `ACTIVITY_GENERATION.md`.

@@ -126,6 +126,12 @@ Erros controlados incluem URL inválida (`400`), vídeo inexistente/privado/inac
 
 Consulte `docs/YOUTUBE_ANALYSIS.md` para contrato, segurança, privacidade, testes e limitações.
 
+## Geração pedagógica de atividades
+
+`POST /v1/activities/generate` recebe ano escolar, disciplina, fonte e a análise estruturada da C1. O motor usa a integração Gemini existente com Structured Output, prompt versionado `c2-v1` e validação determinística posterior. Disciplinas conceituais recebem cinco itens V/F por tema, com explicação e evidência; Matemática recebe cinco problemas novos por habilidade, com resposta e solução.
+
+O fluxo é stateless e não salva conteúdo ou atividades. Conteúdo insuficiente e saídas inválidas falham de modo controlado, sem retorno parcial. Consulte `docs/ACTIVITY_GENERATION.md`.
+
 ## Estratégia futura para o AVA
 
 Links intermediários do AVA Antônio Vieira devem ser resolvidos no backend com lista de destinos permitidos, limite de redirecionamentos e proteção contra SSRF. Login no AVA, captura de agenda e extensão de navegador permanecem fora desta fase.

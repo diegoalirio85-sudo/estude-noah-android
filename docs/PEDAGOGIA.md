@@ -28,3 +28,7 @@ Antes de publicar:
 - há diversidade cognitiva?
 - as falsas são plausíveis?
 - há duplicatas?
+
+## Motor C2
+
+O backend transforma a análise estruturada em atividade com prompt versionado, JSON Schema e auditoria determinística. Para V/F, exige cinco itens por tema e equilíbrio 2/3 ou 3/2. Para Matemática, exige problemas inéditos com resposta e solução, sem V/F. Material insuficiente não é completado com conhecimento externo.
