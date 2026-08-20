@@ -84,13 +84,23 @@ Antes de produção ainda são obrigatórios autenticação, limitação de taxa
 
 ## YouTube e Gemini
 
-`VideoAnalysisService` define a fronteira futura para receber uma URL validada do YouTube e retornar:
+`POST /v1/materials/youtube/analyze`, com `application/json`, recebe uma URL pública oficial do YouTube:
+
+```json
+{"url":"https://www.youtube.com/watch?v=VIDEO_ID"}
+```
+
+São aceitas variantes HTTPS de `youtube.com/watch`, `www.youtube.com/watch`, `m.youtube.com/watch` e `youtu.be`. A URL é validada por allowlist e normalizada antes da chamada externa. Não há resolução genérica de redirecionamentos, acesso a URLs arbitrárias, login, cookies ou integração com AVA.
+
+O backend envia a URL normalizada diretamente como entrada de vídeo para a Gemini Interactions API (`POST /v1beta/interactions`). O provedor analisa áudio e imagem; o serviço não baixa MP4, não extrai MP3 e não depende de legendas. A requisição usa `store=false`, resposta JSON estruturada por schema, timeout de três minutos e somente uma repetição para respostas transitórias.
+
+Resposta:
 
 ```json
 {
   "sourceType": "youtube",
   "sourceUrl": "https://www.youtube.com/watch?v=...",
-  "title": "...",
+  "videoTitle": "...",
   "subject": "...",
   "summary": "...",
   "themes": [{
@@ -99,12 +109,22 @@ Antes de produção ainda são obrigatórios autenticação, limitação de taxa
     "concepts": [],
     "relationships": [],
     "likelyMisconceptions": [],
-    "evidence": []
-  }]
+    "evidence": [{"description":"...","timestamp":"00:42"}]
+  }],
+  "warnings": []
 }
 ```
 
-Esta fase não chama Gemini, não baixa vídeos e não extrai MP3. A implementação futura deve validar domínios/redirecionamentos, respeitar as regras da plataforma e manter evidências ligadas ao material.
+Configuração exclusiva do backend:
+
+- `GEMINI_API_KEY`: obrigatória para executar a análise; nunca usar no APK ou no repositório;
+- `GEMINI_MODEL`: opcional; padrão atual `gemini-3.6-flash`, sempre substituível pelo ambiente.
+
+O prompt pedagógico é versionado em `YoutubePedagogicalAnalysisPrompt`. Ele exige fidelidade exclusiva ao vídeo, evidências temporais, análise multimodal e avisos para incerteza; esta etapa não gera perguntas.
+
+Erros controlados incluem URL inválida (`400`), vídeo inexistente/privado/inacessível (`422`), limite do provedor (`429`), configuração ou indisponibilidade (`503`), timeout (`504`) e autenticação/resposta inválida do provedor (`502`). Respostas não expõem corpo do provedor, stack trace, chave ou credencial.
+
+Consulte `docs/YOUTUBE_ANALYSIS.md` para contrato, segurança, privacidade, testes e limitações.
 
 ## Estratégia futura para o AVA
 

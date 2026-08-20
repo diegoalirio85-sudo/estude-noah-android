@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "sourceType": {"type": "string", "enum": ["youtube"]},
+    "sourceUrl": {"type": "string"},
+    "videoTitle": {"type": "string"},
+    "subject": {"type": "string"},
+    "summary": {"type": "string"},
+    "themes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string"},
+          "learningObjectives": {"type": "array", "items": {"type": "string"}},
+          "concepts": {"type": "array", "items": {"type": "string"}},
+          "relationships": {"type": "array", "items": {"type": "string"}},
+          "likelyMisconceptions": {"type": "array", "items": {"type": "string"}},
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "description": {"type": "string"},
+                "timestamp": {"type": "string"}
+              },
+              "required": ["description", "timestamp"]
+            }
+          }
+        },
+        "required": ["name", "learningObjectives", "concepts", "relationships", "likelyMisconceptions", "evidence"]
+      }
+    },
+    "warnings": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["sourceType", "sourceUrl", "videoTitle", "subject", "summary", "themes", "warnings"]
+}
