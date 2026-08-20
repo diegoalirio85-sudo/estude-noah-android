@@ -140,26 +140,28 @@ final class GeminiInteractionsClient {
     }
 
     private static void validate(VideoAnalysis result, URI normalizedUrl) {
-        if (result == null || !"youtube".equals(result.sourceType())
-                || !normalizedUrl.toString().equals(result.sourceUrl())
-                || blank(result.videoTitle()) || blank(result.subject()) || blank(result.summary())
-                || result.themes() == null || result.themes().isEmpty() || result.warnings() == null) {
-            throw invalidResponse("analysis_required_fields");
-        }
+        if (result == null) throw invalidResponse("analysis_null");
+        if (!"youtube".equals(result.sourceType())) throw invalidResponse("analysis_source_type");
+        if (!normalizedUrl.toString().equals(result.sourceUrl())) throw invalidResponse("analysis_source_url");
+        if (blank(result.videoTitle())) throw invalidResponse("analysis_video_title");
+        if (blank(result.subject())) throw invalidResponse("analysis_subject");
+        if (blank(result.summary())) throw invalidResponse("analysis_summary");
+        if (result.themes() == null || result.themes().isEmpty()) throw invalidResponse("analysis_themes");
+        if (result.warnings() == null) throw invalidResponse("analysis_warnings");
         for (VideoAnalysis.Theme theme : result.themes()) {
-            if (theme == null || blank(theme.name()) || anyNull(theme.learningObjectives(), theme.concepts(),
-                    theme.relationships(), theme.likelyMisconceptions(), theme.evidence())) throw invalidResponse("theme_required_fields");
+            if (theme == null) throw invalidResponse("theme_null");
+            if (blank(theme.name())) throw invalidResponse("theme_name");
+            if (theme.learningObjectives() == null) throw invalidResponse("theme_learning_objectives");
+            if (theme.concepts() == null) throw invalidResponse("theme_concepts");
+            if (theme.relationships() == null) throw invalidResponse("theme_relationships");
+            if (theme.likelyMisconceptions() == null) throw invalidResponse("theme_likely_misconceptions");
+            if (theme.evidence() == null) throw invalidResponse("theme_evidence");
             for (VideoAnalysis.Evidence evidence : theme.evidence()) {
-                if (evidence == null || blank(evidence.description()) || blank(evidence.timestamp())) {
-                    throw invalidResponse("evidence_required_fields");
-                }
+                if (evidence == null) throw invalidResponse("evidence_null");
+                if (blank(evidence.description())) throw invalidResponse("evidence_description");
+                if (blank(evidence.timestamp())) throw invalidResponse("evidence_timestamp");
             }
         }
-    }
-
-    private static boolean anyNull(Object... values) {
-        for (Object value : values) if (value == null) return true;
-        return false;
     }
 
     private static boolean blank(String value) { return value == null || value.isBlank(); }
