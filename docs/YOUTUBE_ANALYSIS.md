@@ -56,6 +56,8 @@ Vídeos privados, não listados ou inacessíveis não são suportados pela entra
 
 O backend não armazena URL, resposta ou conteúdo em banco, disco ou cache. Logs não devem registrar chave, corpo pedagógico ou resposta integral do provedor. Em uma fase futura, autenticação, rate limiting, auditoria sem conteúdo e política de retenção devem anteceder exposição pública.
 
+Para diagnóstico manual, `GEMINI_DIAGNOSTIC_FILE` pode apontar para um arquivo temporário. Em falhas do provedor ou de parsing, o backend grava somente metadados sanitizados: status HTTP, modelo, request id, campos superiores, estado da interação, contagem e tamanho dos blocos de texto e código interno da falha. O corpo pedagógico, headers e a API key nunca são gravados. A variável fica desabilitada por padrão e é usada pelo workflow E2E para publicar `gemini-diagnostic.json` apenas quando o arquivo existir.
+
 ## Limitações conhecidas
 
 - a amostragem visual do provedor pode perder mudanças rápidas de quadro;

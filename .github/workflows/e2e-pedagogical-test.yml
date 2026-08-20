@@ -68,6 +68,7 @@ jobs:
       - name: Iniciar backend local
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_DIAGNOSTIC_FILE: e2e-output/gemini-diagnostic.json
         run: |
           nohup java -jar backend/target/estude-noah-backend-0.1.0-SNAPSHOT.jar \
             > "$RUNNER_TEMP/estude-noah-backend.log" 2>&1 &
@@ -205,6 +206,7 @@ jobs:
             e2e-output/analysis.json
             e2e-output/activity.json
             e2e-output/REPORT.md
+            e2e-output/gemini-diagnostic.json
           if-no-files-found: warn
           retention-days: 14
 
