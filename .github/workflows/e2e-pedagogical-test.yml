@@ -3,6 +3,11 @@ name: E2E Pedagógico - Gemini
 on:
   workflow_dispatch:
     inputs:
+      code_ref:
+        description: Branch, tag ou commit a testar
+        required: true
+        default: feat/c2-pedagogical-engine
+        type: string
       youtube_url:
         description: URL pública do vídeo no YouTube
         required: true
@@ -31,8 +36,10 @@ jobs:
       E2E_OUTPUT: e2e-output
 
     steps:
-      - name: Baixar código
+      - name: Baixar código selecionado
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.code_ref }}
 
       - name: Configurar Java 21
         uses: actions/setup-java@v5
@@ -61,6 +68,7 @@ jobs:
       - name: Iniciar backend local
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_DIAGNOSTIC_FILE: e2e-output/gemini-diagnostic.json
         run: |
           nohup java -jar backend/target/estude-noah-backend-0.1.0-SNAPSHOT.jar \
             > "$RUNNER_TEMP/estude-noah-backend.log" 2>&1 &
@@ -131,6 +139,7 @@ jobs:
       - name: Criar relatório legível
         if: always()
         env:
+          CODE_REF: ${{ inputs.code_ref }}
           YOUTUBE_URL: ${{ inputs.youtube_url }}
           SUBJECT: ${{ inputs.subject }}
           GRADE: ${{ inputs.grade }}
@@ -170,6 +179,7 @@ jobs:
           {
             echo "# Relatório E2E pedagógico"
             echo
+            echo "- code_ref testado: $CODE_REF"
             echo "- URL utilizada: $YOUTUBE_URL"
             echo "- Disciplina: $SUBJECT"
             echo "- Ano: $GRADE"
@@ -196,6 +206,7 @@ jobs:
             e2e-output/analysis.json
             e2e-output/activity.json
             e2e-output/REPORT.md
+            e2e-output/gemini-diagnostic.json
           if-no-files-found: warn
           retention-days: 14
 
