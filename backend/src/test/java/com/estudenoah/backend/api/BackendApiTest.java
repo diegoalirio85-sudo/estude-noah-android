@@ -13,10 +13,11 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import com.estudenoah.backend.material.LegacyPptExtractor;
+import com.estudenoah.backend.activity.ActivityGenerationService;
 import com.estudenoah.backend.video.VideoAnalysisService;
 import com.estudenoah.backend.video.YoutubeUrlNormalizer;
 
-@WebMvcTest({HealthController.class, MaterialController.class, YoutubeMaterialController.class,
+@WebMvcTest({HealthController.class, MaterialController.class, YoutubeMaterialController.class, ActivityController.class,
         YoutubeUrlNormalizer.class, ApiExceptionHandler.class})
 class BackendApiTest {
     @Autowired
@@ -27,6 +28,9 @@ class BackendApiTest {
 
     @MockitoBean
     private VideoAnalysisService videoAnalysisService;
+
+    @MockitoBean
+    private ActivityGenerationService activityGenerationService;
 
     @Test
     void healthDoesNotDependOnExternalServices() throws Exception {
@@ -70,5 +74,13 @@ class BackendApiTest {
                         .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("invalid_youtube_url"));
+    }
+
+    @Test
+    void activityEndpointAcceptsJsonAndDelegatesToService() throws Exception {
+        mockMvc.perform(post("/v1/activities/generate")
+                        .contentType("application/json")
+                        .content("{\"grade\":\"4º Ano\",\"subject\":\"Ciências\",\"source\":{\"type\":\"youtube\",\"title\":\"Aula\",\"url\":\"https://youtu.be/AbCdEf123_-\"},\"analysis\":null}"))
+                .andExpect(status().isOk());
     }
 }

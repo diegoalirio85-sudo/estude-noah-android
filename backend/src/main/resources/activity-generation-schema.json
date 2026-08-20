@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "subject": {"type": "string"},
+    "grade": {"type": "string"},
+    "activityType": {"type": "string", "enum": ["TRUE_FALSE", "MATH_PROBLEMS"]},
+    "themes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string"},
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "statement": {"type": ["string", "null"]},
+                "answer": {"type": ["boolean", "null"]},
+                "explanation": {"type": ["string", "null"]},
+                "evidence": {"type": "array", "items": {"type": "string"}},
+                "theme": {"type": "string"},
+                "learningObjective": {"type": "string"},
+                "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]},
+                "problem": {"type": ["string", "null"]},
+                "mathAnswer": {"type": ["string", "null"]},
+                "solutionSteps": {"type": ["array", "null"], "items": {"type": "string"}},
+                "skill": {"type": ["string", "null"]}
+              },
+              "required": ["statement", "answer", "explanation", "evidence", "theme", "learningObjective", "difficulty", "problem", "mathAnswer", "solutionSteps", "skill"]
+            }
+          }
+        },
+        "required": ["name", "questions"]
+      }
+    },
+    "warnings": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["subject", "grade", "activityType", "themes", "warnings"]
+}
