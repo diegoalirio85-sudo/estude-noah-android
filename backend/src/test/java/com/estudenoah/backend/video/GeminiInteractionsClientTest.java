@@ -116,6 +116,19 @@ class GeminiInteractionsClientTest {
     }
 
     @Test
+    void usesServerValidatedCanonicalSourceInsteadOfModelEcho() throws Exception {
+        HttpClient http = mock(HttpClient.class);
+        String analysis = validAnalysis()
+                .replace("https://www.youtube.com/watch?v=AbCdEf123_-", "https://youtu.be/model-echo");
+        stubResponse(http, 200, interaction(analysis));
+
+        VideoAnalysis result = client(http).analyze(VIDEO);
+
+        assertThat(result.sourceType()).isEqualTo("youtube");
+        assertThat(result.sourceUrl()).isEqualTo(VIDEO.toString());
+    }
+
+    @Test
     void writesOnlySanitizedMetadataWhenParsingFails() throws Exception {
         HttpClient http = mock(HttpClient.class);
         Path diagnostic = Files.createTempFile("gemini-diagnostic", ".json");
