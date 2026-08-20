@@ -121,12 +121,13 @@ final class GeminiInteractionsClient {
             }
             if (!foundModelOutput) throw invalidResponse("model_output_absent");
             if (output.toString().isBlank()) throw invalidResponse("output_text_empty");
-            VideoAnalysis result;
+            VideoAnalysis providerResult;
             try {
-                result = mapper.readValue(output.toString(), VideoAnalysis.class);
+                providerResult = mapper.readValue(output.toString(), VideoAnalysis.class);
             } catch (RuntimeException error) {
                 throw invalidResponse("analysis_json_deserialization_" + error.getClass().getSimpleName());
             }
+            VideoAnalysis result = withAuthoritativeSource(providerResult, normalizedUrl);
             validate(result, normalizedUrl);
             return result;
         } catch (GeminiProviderException error) {
@@ -162,6 +163,12 @@ final class GeminiInteractionsClient {
                 if (blank(evidence.timestamp())) throw invalidResponse("evidence_timestamp");
             }
         }
+    }
+
+    private static VideoAnalysis withAuthoritativeSource(VideoAnalysis result, URI normalizedUrl) {
+        if (result == null) return null;
+        return new VideoAnalysis("youtube", normalizedUrl.toString(), result.videoTitle(), result.subject(),
+                result.summary(), result.themes(), result.warnings());
     }
 
     private static boolean blank(String value) { return value == null || value.isBlank(); }
