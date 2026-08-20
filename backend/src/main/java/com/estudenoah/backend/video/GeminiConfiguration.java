@@ -3,6 +3,7 @@ package com.estudenoah.backend.video;
 import tools.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.nio.file.Path;
 import java.time.Duration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,12 +22,16 @@ public class GeminiConfiguration {
     }
 
     @Bean
-    GeminiInteractionsClient geminiInteractionsClient(ObjectMapper mapper, GeminiSettings settings) {
+    GeminiInteractionsClient geminiInteractionsClient(ObjectMapper mapper, GeminiSettings settings,
+                                                       Environment environment) {
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
-        return new GeminiInteractionsClient(httpClient, mapper, settings, INTERACTIONS_ENDPOINT, Duration.ofMinutes(3));
+        String diagnosticFile = environment.getProperty("GEMINI_DIAGNOSTIC_FILE", "").trim();
+        Path diagnosticPath = diagnosticFile.isEmpty() ? null : Path.of(diagnosticFile);
+        return new GeminiInteractionsClient(httpClient, mapper, settings, INTERACTIONS_ENDPOINT,
+                Duration.ofMinutes(3), diagnosticPath);
     }
 
     record GeminiSettings(String apiKey, String model) {

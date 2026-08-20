@@ -13,7 +13,12 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpHeaders;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -43,6 +48,104 @@ class GeminiInteractionsClientTest {
         assertThat(body).contains("\"store\":false", "\"type\":\"video\"", VIDEO.toString(),
                 "\"mime_type\":\"application/json\"");
         assertThat(request.getValue().headers().firstValue("x-goog-api-key")).contains("test-key");
+    }
+
+    @Test
+    void concatenatesAllTextBlocksFromLastModelOutputLikeOfficialOutputText() throws Exception {
+        HttpClient http = mock(HttpClient.class);
+        String analysis = validAnalysis();
+        int split = analysis.length() / 2;
+        String body = interactionWithTextBlocks(analysis.substring(0, split), analysis.substring(split));
+        stubResponse(http, 200, body);
+
+        VideoAnalysis result = client(http).analyze(VIDEO);
+
+        assertThat(result.videoTitle()).isEqualTo("Ciclo da água");
+        assertThat(result.themes()).hasSize(1);
+    }
+
+    @Test
+    void ignoresEarlierModelOutputAndUsesLastOne() throws Exception {
+        HttpClient http = mock(HttpClient.class);
+        String body = "{\"status\":\"completed\",\"steps\":["
+                + "{\"type\":\"model_output\",\"content\":[{\"type\":\"text\",\"text\":\"rascunho\"}]},"
+                + modelOutput(validAnalysis()) + "]}";
+        stubResponse(http, 200, body);
+
+        assertThat(client(http).analyze(VIDEO).summary()).isEqualTo("Explica as etapas observadas.");
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidInteractions")
+    void rejectsMissingEmptyMalformedAndAbnormalOutputs(String body) throws Exception {
+        HttpClient http = mock(HttpClient.class);
+        stubResponse(http, 200, body);
+
+        assertThatThrownBy(() -> client(http).analyze(VIDEO))
+                .isInstanceOf(GeminiProviderException.class)
+                .extracting(error -> ((GeminiProviderException) error).kind())
+                .isEqualTo(GeminiProviderException.Kind.INVALID_RESPONSE);
+    }
+
+    static Stream<Arguments> invalidInteractions() throws Exception {
+        return Stream.of(
+                Arguments.of("{\"status\":\"completed\",\"steps\":[]}"),
+                Arguments.of(interaction("")),
+                Arguments.of(interaction("{not-json")),
+                Arguments.of(interaction("{\"sourceType\":\"youtube\"}")),
+                Arguments.of("{\"status\":\"failed\",\"steps\":[],\"status_reason\":\"safety\"}"),
+                Arguments.of(interaction(validAnalysis().substring(0, validAnalysis().length() / 2)))
+        );
+    }
+
+    @Test
+    void acceptsEmptyThemeDetailListsWhenRequiredContractFieldsExist() throws Exception {
+        HttpClient http = mock(HttpClient.class);
+        String analysis = validAnalysis()
+                .replace("[\"Relacionar as etapas\"]", "[]")
+                .replace("[\"evaporação\"]", "[]")
+                .replace("[\"calor favorece evaporação\"]", "[]")
+                .replace("[\"água desaparece\"]", "[]")
+                .replace("[{\"description\":\"Diagrama e narração mostram evaporação\",\"timestamp\":\"00:42\"}]", "[]");
+        stubResponse(http, 200, interaction(analysis));
+
+        VideoAnalysis result = client(http).analyze(VIDEO);
+
+        assertThat(result.themes().getFirst().learningObjectives()).isEmpty();
+        assertThat(result.themes().getFirst().evidence()).isEmpty();
+    }
+
+    @Test
+    void usesServerValidatedCanonicalSourceInsteadOfModelEcho() throws Exception {
+        HttpClient http = mock(HttpClient.class);
+        String analysis = validAnalysis()
+                .replace("https://www.youtube.com/watch?v=AbCdEf123_-", "https://youtu.be/model-echo");
+        stubResponse(http, 200, interaction(analysis));
+
+        VideoAnalysis result = client(http).analyze(VIDEO);
+
+        assertThat(result.sourceType()).isEqualTo("youtube");
+        assertThat(result.sourceUrl()).isEqualTo(VIDEO.toString());
+    }
+
+    @Test
+    void writesOnlySanitizedMetadataWhenParsingFails() throws Exception {
+        HttpClient http = mock(HttpClient.class);
+        Path diagnostic = Files.createTempFile("gemini-diagnostic", ".json");
+        Files.deleteIfExists(diagnostic);
+        HttpResponse<String> response = response(200, interaction("private educational output that is not json"));
+        when(response.headers()).thenReturn(HttpHeaders.of(Map.of("x-request-id", List.of("request-123")), (a, b) -> true));
+        when(http.send(any(), any(HttpResponse.BodyHandler.class))).thenReturn(response);
+        var client = new GeminiInteractionsClient(http, new ObjectMapper(),
+                new GeminiSettings("test-key", "gemini-3.6-flash"),
+                URI.create("https://example.test/interactions"), Duration.ofSeconds(2), diagnostic);
+
+        assertThatThrownBy(() -> client.analyze(VIDEO)).isInstanceOf(GeminiProviderException.class);
+
+        String metadata = Files.readString(diagnostic);
+        assertThat(metadata).contains("request-123", "gemini-3.6-flash", "outputTextLength", "failureReason");
+        assertThat(metadata).doesNotContain("test-key", "private educational output");
+        Files.deleteIfExists(diagnostic);
     }
 
     @Test
@@ -93,9 +196,30 @@ class GeminiInteractionsClientTest {
         return response;
     }
 
+    @SuppressWarnings("unchecked")
+    private static void stubResponse(HttpClient http, int status, String body) throws Exception {
+        HttpResponse<String> value = response(status, body);
+        when(http.send(any(), any(HttpResponse.BodyHandler.class))).thenReturn(value);
+    }
+
     private static String interaction(String output) throws Exception {
+        return "{\"status\":\"completed\",\"steps\":[" + modelOutput(output) + "]}";
+    }
+
+    private static String interactionWithTextBlocks(String... outputs) throws Exception {
+        StringBuilder content = new StringBuilder();
+        ObjectMapper mapper = new ObjectMapper();
+        for (String output : outputs) {
+            if (!content.isEmpty()) content.append(',');
+            content.append("{\"type\":\"text\",\"text\":")
+                    .append(mapper.writeValueAsString(output)).append('}');
+        }
+        return "{\"status\":\"completed\",\"steps\":[{\"type\":\"model_output\",\"content\":[" + content + "]}]}";
+    }
+
+    private static String modelOutput(String output) throws Exception {
         String encoded = new ObjectMapper().writeValueAsString(output);
-        return "{\"status\":\"completed\",\"steps\":[{\"type\":\"model_output\",\"content\":[{\"type\":\"text\",\"text\":" + encoded + "}]}]}";
+        return "{\"type\":\"model_output\",\"content\":[{\"type\":\"text\",\"text\":" + encoded + "}]}";
     }
 
     private static String validAnalysis() {

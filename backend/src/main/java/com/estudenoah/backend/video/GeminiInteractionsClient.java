@@ -11,23 +11,36 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 final class GeminiInteractionsClient {
+    private static final Logger LOGGER = LoggerFactory.getLogger(GeminiInteractionsClient.class);
     private final HttpClient httpClient;
     private final ObjectMapper mapper;
     private final GeminiSettings settings;
     private final URI endpoint;
     private final Duration requestTimeout;
     private final JsonNode responseSchema;
+    private final Path diagnosticPath;
 
     GeminiInteractionsClient(HttpClient httpClient, ObjectMapper mapper, GeminiSettings settings,
                              URI endpoint, Duration requestTimeout) {
+        this(httpClient, mapper, settings, endpoint, requestTimeout, null);
+    }
+
+    GeminiInteractionsClient(HttpClient httpClient, ObjectMapper mapper, GeminiSettings settings,
+                             URI endpoint, Duration requestTimeout, Path diagnosticPath) {
         this.httpClient = httpClient;
         this.mapper = mapper;
         this.settings = settings;
         this.endpoint = endpoint;
         this.requestTimeout = requestTimeout;
+        this.diagnosticPath = diagnosticPath;
         try (InputStream input = getClass().getResourceAsStream("/youtube-analysis-schema.json")) {
             if (input == null) throw new IOException("schema resource missing");
             this.responseSchema = mapper.readTree(input);
@@ -47,9 +60,10 @@ final class GeminiInteractionsClient {
             response = send(request);
         }
         if (response.statusCode() / 100 != 2) {
+            writeDiagnostic(response, "provider_http_error");
             throw providerError(response.statusCode());
         }
-        return parse(response.body(), youtubeUrl);
+        return parse(response, youtubeUrl);
     }
 
     private HttpRequest request(URI youtubeUrl) {
@@ -87,57 +101,165 @@ final class GeminiInteractionsClient {
         }
     }
 
-    private VideoAnalysis parse(String body, URI normalizedUrl) {
+    private VideoAnalysis parse(HttpResponse<String> response, URI normalizedUrl) {
         try {
-            JsonNode interaction = mapper.readTree(body);
-            if (!"completed".equals(interaction.path("status").asText())) throw invalidResponse();
-            String output = null;
+            JsonNode interaction = mapper.readTree(response.body());
+            String status = interaction.path("status").asText("");
+            if (!"completed".equals(status)) throw invalidResponse("interaction_status_" + safeToken(status));
+            StringBuilder output = new StringBuilder();
+            boolean foundModelOutput = false;
             for (JsonNode step : interaction.path("steps")) {
                 if ("model_output".equals(step.path("type").asText())) {
+                    if (foundModelOutput) output.setLength(0);
+                    foundModelOutput = true;
                     for (JsonNode content : step.path("content")) {
-                        if ("text".equals(content.path("type").asText())) output = content.path("text").asText(null);
+                        if ("text".equals(content.path("type").asText()) && content.path("text").isTextual()) {
+                            output.append(content.path("text").asText());
+                        }
                     }
                 }
             }
-            if (output == null || output.isBlank()) throw invalidResponse();
-            VideoAnalysis result = mapper.readValue(output, VideoAnalysis.class);
+            if (!foundModelOutput) throw invalidResponse("model_output_absent");
+            if (output.toString().isBlank()) throw invalidResponse("output_text_empty");
+            VideoAnalysis providerResult;
+            try {
+                providerResult = mapper.readValue(output.toString(), VideoAnalysis.class);
+            } catch (RuntimeException error) {
+                throw invalidResponse("analysis_json_deserialization_" + error.getClass().getSimpleName());
+            }
+            VideoAnalysis result = withAuthoritativeSource(providerResult, normalizedUrl);
             validate(result, normalizedUrl);
             return result;
         } catch (GeminiProviderException error) {
+            writeDiagnostic(response, error.getMessage());
             throw error;
         } catch (RuntimeException error) {
-            throw new GeminiProviderException(GeminiProviderException.Kind.INVALID_RESPONSE,
-                    "O provedor retornou uma análise inválida.", error);
+            GeminiProviderException invalid = invalidResponse("interaction_json_" + error.getClass().getSimpleName());
+            writeDiagnostic(response, invalid.getMessage());
+            throw invalid;
         }
     }
 
     private static void validate(VideoAnalysis result, URI normalizedUrl) {
-        if (result == null || !"youtube".equals(result.sourceType())
-                || !normalizedUrl.toString().equals(result.sourceUrl())
-                || blank(result.videoTitle()) || blank(result.subject()) || blank(result.summary())
-                || result.themes() == null || result.themes().isEmpty() || result.warnings() == null) {
-            throw invalidResponse();
-        }
+        if (result == null) throw invalidResponse("analysis_null");
+        if (!"youtube".equals(result.sourceType())) throw invalidResponse("analysis_source_type");
+        if (!normalizedUrl.toString().equals(result.sourceUrl())) throw invalidResponse("analysis_source_url");
+        if (blank(result.videoTitle())) throw invalidResponse("analysis_video_title");
+        if (blank(result.subject())) throw invalidResponse("analysis_subject");
+        if (blank(result.summary())) throw invalidResponse("analysis_summary");
+        if (result.themes() == null || result.themes().isEmpty()) throw invalidResponse("analysis_themes");
+        if (result.warnings() == null) throw invalidResponse("analysis_warnings");
         for (VideoAnalysis.Theme theme : result.themes()) {
-            if (theme == null || blank(theme.name()) || anyNull(theme.learningObjectives(), theme.concepts(),
-                    theme.relationships(), theme.likelyMisconceptions(), theme.evidence())) throw invalidResponse();
+            if (theme == null) throw invalidResponse("theme_null");
+            if (blank(theme.name())) throw invalidResponse("theme_name");
+            if (theme.learningObjectives() == null) throw invalidResponse("theme_learning_objectives");
+            if (theme.concepts() == null) throw invalidResponse("theme_concepts");
+            if (theme.relationships() == null) throw invalidResponse("theme_relationships");
+            if (theme.likelyMisconceptions() == null) throw invalidResponse("theme_likely_misconceptions");
+            if (theme.evidence() == null) throw invalidResponse("theme_evidence");
             for (VideoAnalysis.Evidence evidence : theme.evidence()) {
-                if (evidence == null || blank(evidence.description()) || blank(evidence.timestamp())) throw invalidResponse();
+                if (evidence == null) throw invalidResponse("evidence_null");
+                if (blank(evidence.description())) throw invalidResponse("evidence_description");
+                if (blank(evidence.timestamp())) throw invalidResponse("evidence_timestamp");
             }
         }
     }
 
-    private static boolean anyNull(Object... values) {
-        for (Object value : values) if (value == null) return true;
-        return false;
+    private static VideoAnalysis withAuthoritativeSource(VideoAnalysis result, URI normalizedUrl) {
+        if (result == null) return null;
+        return new VideoAnalysis("youtube", normalizedUrl.toString(), result.videoTitle(), result.subject(),
+                result.summary(), result.themes(), result.warnings());
     }
 
     private static boolean blank(String value) { return value == null || value.isBlank(); }
     private static boolean isTransient(int status) { return status == 429 || status == 500 || status == 502 || status == 503 || status == 504; }
-    private static GeminiProviderException invalidResponse() {
+    private static GeminiProviderException invalidResponse(String reason) {
         return new GeminiProviderException(GeminiProviderException.Kind.INVALID_RESPONSE,
-                "O provedor retornou uma análise inválida.");
+                reason);
     }
+
+    private void writeDiagnostic(HttpResponse<String> response, String reason) {
+        if (diagnosticPath == null) return;
+        try {
+            JsonNode interaction = safeTree(response.body());
+            ObjectNode diagnostic = mapper.createObjectNode();
+            diagnostic.put("providerHttpStatus", response.statusCode());
+            diagnostic.put("model", settings.model());
+            diagnostic.put("providerRequestId", requestId(response, interaction));
+            diagnostic.put("interactionStatus", interaction.path("status").asText("absent"));
+            diagnostic.put("statusReason", statusReason(interaction));
+            ArrayNode fields = diagnostic.putArray("topLevelFields");
+            if (interaction.isObject()) interaction.propertyStream().map(java.util.Map.Entry::getKey).sorted().forEach(fields::add);
+            OutputMetadata output = outputMetadata(interaction);
+            diagnostic.put("modelOutputPresent", output.modelOutputPresent());
+            diagnostic.put("textBlockCount", output.textBlockCount());
+            diagnostic.put("outputTextPresent", output.textLength() > 0);
+            diagnostic.put("outputTextLength", output.textLength());
+            diagnostic.put("failureReason", safeReason(reason));
+            Path parent = diagnosticPath.toAbsolutePath().getParent();
+            if (parent != null) Files.createDirectories(parent);
+            mapper.writerWithDefaultPrettyPrinter().writeValue(diagnosticPath.toFile(), diagnostic);
+            LOGGER.warn("Gemini response rejected: status={}, model={}, requestId={}, reason={}",
+                    response.statusCode(), settings.model(), diagnostic.path("providerRequestId").asText(), safeReason(reason));
+        } catch (RuntimeException | IOException diagnosticError) {
+            LOGGER.warn("Could not write sanitized Gemini diagnostic: {}", diagnosticError.getClass().getSimpleName());
+        }
+    }
+
+    private JsonNode safeTree(String body) {
+        try {
+            JsonNode value = mapper.readTree(body == null ? "" : body);
+            return value == null ? mapper.createObjectNode() : value;
+        } catch (RuntimeException error) {
+            return mapper.createObjectNode();
+        }
+    }
+
+    private static String requestId(HttpResponse<String> response, JsonNode interaction) {
+        String bodyId = interaction.path("id").asText("");
+        if (!bodyId.isBlank()) return bodyId;
+        if (response.headers() == null) return "absent";
+        return response.headers().firstValue("x-request-id")
+                .or(() -> response.headers().firstValue("x-goog-request-id"))
+                .orElse("absent");
+    }
+
+    private static String statusReason(JsonNode interaction) {
+        for (String field : List.of("status_reason", "finish_reason", "finishReason")) {
+            String value = interaction.path(field).asText("");
+            if (!value.isBlank()) return safeToken(value);
+        }
+        return "absent";
+    }
+
+    private static OutputMetadata outputMetadata(JsonNode interaction) {
+        int blocks = 0;
+        int length = 0;
+        boolean modelOutput = false;
+        for (JsonNode step : interaction.path("steps")) {
+            if (!"model_output".equals(step.path("type").asText())) continue;
+            modelOutput = true;
+            for (JsonNode content : step.path("content")) {
+                if ("text".equals(content.path("type").asText()) && content.path("text").isTextual()) {
+                    blocks++;
+                    length += content.path("text").asText().length();
+                }
+            }
+        }
+        return new OutputMetadata(modelOutput, blocks, length);
+    }
+
+    private static String safeReason(String value) {
+        if (value == null || value.isBlank()) return "unknown";
+        String sanitized = value.replaceAll("[^A-Za-z0-9_.-]", "_");
+        return sanitized.substring(0, Math.min(sanitized.length(), 160));
+    }
+
+    private static String safeToken(String value) {
+        return value == null || value.isBlank() ? "absent" : safeReason(value);
+    }
+
+    private record OutputMetadata(boolean modelOutputPresent, int textBlockCount, int textLength) { }
 
     private static GeminiProviderException providerError(int status) {
         GeminiProviderException.Kind kind = switch (status) {
