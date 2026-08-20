@@ -56,7 +56,7 @@ class GeminiInteractionsClientTest {
         String analysis = validAnalysis();
         int split = analysis.length() / 2;
         String body = interactionWithTextBlocks(analysis.substring(0, split), analysis.substring(split));
-        when(http.send(any(), any(HttpResponse.BodyHandler.class))).thenReturn(response(200, body));
+        stubResponse(http, 200, body);
 
         VideoAnalysis result = client(http).analyze(VIDEO);
 
@@ -70,7 +70,7 @@ class GeminiInteractionsClientTest {
         String body = "{\"status\":\"completed\",\"steps\":["
                 + "{\"type\":\"model_output\",\"content\":[{\"type\":\"text\",\"text\":\"rascunho\"}]},"
                 + modelOutput(validAnalysis()) + "]}";
-        when(http.send(any(), any(HttpResponse.BodyHandler.class))).thenReturn(response(200, body));
+        stubResponse(http, 200, body);
 
         assertThat(client(http).analyze(VIDEO).summary()).isEqualTo("Explica as etapas observadas.");
     }
@@ -79,7 +79,7 @@ class GeminiInteractionsClientTest {
     @MethodSource("invalidInteractions")
     void rejectsMissingEmptyMalformedAndAbnormalOutputs(String body) throws Exception {
         HttpClient http = mock(HttpClient.class);
-        when(http.send(any(), any(HttpResponse.BodyHandler.class))).thenReturn(response(200, body));
+        stubResponse(http, 200, body);
 
         assertThatThrownBy(() -> client(http).analyze(VIDEO))
                 .isInstanceOf(GeminiProviderException.class)
@@ -107,7 +107,7 @@ class GeminiInteractionsClientTest {
                 .replace("[\"calor favorece evaporação\"]", "[]")
                 .replace("[\"água desaparece\"]", "[]")
                 .replace("[{\"description\":\"Diagrama e narração mostram evaporação\",\"timestamp\":\"00:42\"}]", "[]");
-        when(http.send(any(), any(HttpResponse.BodyHandler.class))).thenReturn(response(200, interaction(analysis)));
+        stubResponse(http, 200, interaction(analysis));
 
         VideoAnalysis result = client(http).analyze(VIDEO);
 
@@ -181,6 +181,12 @@ class GeminiInteractionsClientTest {
         when(response.statusCode()).thenReturn(status);
         when(response.body()).thenReturn(body);
         return response;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void stubResponse(HttpClient http, int status, String body) throws Exception {
+        HttpResponse<String> value = response(status, body);
+        when(http.send(any(), any(HttpResponse.BodyHandler.class))).thenReturn(value);
     }
 
     private static String interaction(String output) throws Exception {
