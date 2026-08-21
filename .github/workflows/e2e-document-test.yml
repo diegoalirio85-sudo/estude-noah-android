@@ -1,0 +1,451 @@
+name: E2E Documental - Gemini
+
+on:
+  workflow_dispatch:
+    inputs:
+      code_ref:
+        description: Branch, tag ou commit a testar
+        required: true
+        default: feat/d1a-document-pipeline
+        type: string
+      source_type:
+        description: Tipo da fonte documental
+        required: true
+        default: pdf
+        type: choice
+        options:
+          - pdf
+          - ppt
+          - pptx
+          - docx
+          - odt
+          - text
+      subject:
+        description: Disciplina da atividade
+        required: true
+        default: Língua Portuguesa
+        type: string
+      grade:
+        description: Ano escolar
+        required: true
+        default: 4º Ano Ensino Fundamental
+        type: string
+      test_case:
+        description: Fixture pedagógica artificial
+        required: true
+        default: portuguese_conceptual
+        type: choice
+        options:
+          - portuguese_conceptual
+          - math_conceptual
+          - ppt_fixture
+
+jobs:
+  authorize-build-test:
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+
+    outputs:
+      validated_sha: ${{ steps.authorize.outputs.sha }}
+
+    steps:
+      - name: Resolver ref e autorizar SHA sem segredo
+        id: authorize
+        env:
+          CODE_REF: ${{ inputs.code_ref }}
+          ALLOWED_SHA: ${{ vars.DOCUMENT_E2E_ALLOWED_SHA }}
+        run: |
+          if ! [[ "$ALLOWED_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "Configure DOCUMENT_E2E_ALLOWED_SHA com um SHA completo de 40 caracteres."
+            exit 1
+          fi
+          git init --quiet "$RUNNER_TEMP/ref-resolution"
+          git -C "$RUNNER_TEMP/ref-resolution" remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          if ! git -C "$RUNNER_TEMP/ref-resolution" fetch --quiet --no-tags --depth=1 origin "$CODE_REF"; then
+            echo "Não foi possível resolver code_ref no repositório."
+            exit 1
+          fi
+          resolved_sha=$(git -C "$RUNNER_TEMP/ref-resolution" rev-parse 'FETCH_HEAD^{commit}')
+          if [ "${resolved_sha,,}" != "${ALLOWED_SHA,,}" ]; then
+            echo "code_ref resolve para um SHA diferente de DOCUMENT_E2E_ALLOWED_SHA."
+            exit 1
+          fi
+          echo "SHA autorizado: $resolved_sha"
+          echo "sha=$resolved_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Baixar somente o SHA autorizado
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.authorize.outputs.sha }}
+          persist-credentials: false
+
+      - name: Configurar Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Compilar e executar testes normais do backend sem segredo
+        working-directory: backend
+        run: mvn -B -ntp verify
+
+      - name: Preservar backend validado para a fase E2E
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-document-e2e-backend
+          path: backend/target/estude-noah-backend-0.1.0-SNAPSHOT.jar
+          if-no-files-found: error
+          retention-days: 1
+
+  document-e2e-with-secret:
+    needs: authorize-build-test
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+
+    env:
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.6-flash' }}
+      E2E_OUTPUT: document-e2e-output
+
+    steps:
+      - name: Baixar exatamente o SHA validado
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.authorize-build-test.outputs.validated_sha }}
+          persist-credentials: false
+
+      - name: Configurar Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Recuperar backend compilado na fase sem segredo
+        uses: actions/download-artifact@v5
+        with:
+          name: validated-document-e2e-backend
+          path: backend/target
+
+      - name: Preparar diretório de resultados
+        run: mkdir -p "$E2E_OUTPUT"
+
+      - name: Preparar fixture artificial
+        env:
+          TEST_CASE: ${{ inputs.test_case }}
+        run: |
+          case "$TEST_CASE" in
+            portuguese_conceptual)
+              cat > "$RUNNER_TEMP/document-fixture.txt" <<'FIXTURE'
+          Os substantivos nomeiam seres, lugares, objetos, sentimentos e ideias. Eles podem ser observados de diferentes maneiras, conforme sua formação. Um substantivo simples possui apenas um radical, como pedra, flor e chuva. Um substantivo composto reúne mais de um radical, como guarda-chuva e beija-flor. Essa classificação considera a estrutura da palavra, não o tamanho do objeto nomeado.
+
+          Também podemos investigar a origem dos substantivos. Um substantivo primitivo não se forma a partir de outra palavra da mesma língua, como pedra, terra e livro. Já um substantivo derivado nasce de outra palavra por meio de elementos acrescentados ao radical. Pedreiro deriva de pedra, terrestre relaciona-se a terra e livraria deriva de livro. Assim, simples e composto tratam da quantidade de radicais, enquanto primitivo e derivado tratam da formação em relação a outras palavras.
+
+          As classificações podem aparecer ao mesmo tempo. Pedra é simples e primitivo; pedreiro é simples e derivado; guarda-chuva é composto. Para classificar uma palavra, é importante justificar quais radicais aparecem e se ela foi formada a partir de outra palavra. Comparar exemplos ajuda a evitar a ideia equivocada de que toda palavra comprida é composta ou de que todo substantivo simples é primitivo.
+          FIXTURE
+              ;;
+            math_conceptual)
+              cat > "$RUNNER_TEMP/document-fixture.txt" <<'FIXTURE'
+          Uma turma do 4º ano está planejando uma feira de livros. Para organizar caixas e calcular quantidades, os estudantes usam multiplicação, divisão, adição e subtração. Quando várias caixas têm a mesma quantidade de livros, a multiplicação representa a soma de parcelas iguais. Se 6 caixas recebem 24 livros igualmente, a divisão ajuda a descobrir quantos livros ficam em cada caixa.
+
+          Os cálculos devem ser interpretados de acordo com a situação. A divisão pode indicar repartição em grupos iguais ou quantos grupos cabem em uma quantidade. Em problemas com mais de uma etapa, é preciso decidir a ordem das operações: primeiro reunir ou separar as quantidades descritas e depois comparar o resultado com a meta. Estimar antes de calcular permite verificar se a resposta final é razoável.
+
+          Uma solução completa registra os dados relevantes, explica a operação escolhida, mostra as etapas do cálculo e responde com a unidade correta. Problemas novos podem combinar caixas, livros vendidos, livros restantes e distribuição entre mesas, usando números naturais adequados ao 4º ano e divisões exatas.
+          FIXTURE
+              ;;
+            ppt_fixture)
+              cat > "$RUNNER_TEMP/document-fixture.txt" <<'FIXTURE'
+          Os substantivos nomeiam seres, lugares, objetos, sentimentos e ideias. Um substantivo simples possui um radical; um composto possui mais de um. Um substantivo primitivo não deriva de outra palavra da mesma língua, enquanto um derivado se forma a partir dela. Pedra é simples e primitivo, pedreiro é simples e derivado, e guarda-chuva é composto. As duas classificações analisam critérios diferentes e podem ser combinadas.
+          FIXTURE
+              ;;
+            *)
+              echo "Test case não suportado: $TEST_CASE"
+              exit 1
+              ;;
+          esac
+
+      - name: Criar fixture PPT binária artificial
+        if: inputs.source_type == 'ppt'
+        working-directory: backend
+        run: |
+          mvn -B -ntp dependency:build-classpath -DincludeScope=test -Dmdep.outputFile="$RUNNER_TEMP/test-classpath.txt"
+          cat > "$RUNNER_TEMP/CreatePpt.java" <<'JAVA'
+          import java.io.FileOutputStream;
+          import org.apache.poi.hslf.usermodel.HSLFSlideShow;
+          import org.apache.poi.hslf.usermodel.HSLFTextBox;
+
+          public class CreatePpt {
+              public static void main(String[] args) throws Exception {
+                  try (var show = new HSLFSlideShow(); var output = new FileOutputStream(args[0])) {
+                      add(show, "Substantivos e sua formação",
+                              "Os substantivos nomeiam seres, lugares, objetos, sentimentos e ideias.");
+                      add(show, "Estrutura das palavras",
+                              "Um substantivo simples possui um radical. Um substantivo composto possui mais de um radical, como guarda-chuva e beija-flor.");
+                      add(show, "Origem das palavras",
+                              "Primitivos não derivam de outra palavra da mesma língua. Derivados formam-se a partir deles: pedra e pedreiro; livro e livraria.");
+                      add(show, "Critérios que se combinam",
+                              "Simples e composto analisam radicais; primitivo e derivado analisam a origem. Uma palavra pode receber uma classificação de cada critério.");
+                      show.write(output);
+                  }
+              }
+
+              private static void add(HSLFSlideShow show, String title, String body) {
+                  var slide = show.createSlide();
+                  var titleBox = new HSLFTextBox();
+                  titleBox.setText(title);
+                  slide.addShape(titleBox);
+                  var bodyBox = new HSLFTextBox();
+                  bodyBox.setText(body);
+                  slide.addShape(bodyBox);
+              }
+          }
+          JAVA
+          classpath="$(cat "$RUNNER_TEMP/test-classpath.txt")"
+          javac -cp "$classpath" "$RUNNER_TEMP/CreatePpt.java"
+          java -cp "$classpath:$RUNNER_TEMP" CreatePpt "$RUNNER_TEMP/artificial-document.ppt"
+
+      - name: Verificar segredo Gemini após autorização
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "Configure GEMINI_API_KEY in repository Actions secrets."
+            exit 1
+          fi
+
+      - name: Iniciar backend validado com Gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          nohup java -jar backend/target/estude-noah-backend-0.1.0-SNAPSHOT.jar \
+            > "$RUNNER_TEMP/estude-noah-backend.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/estude-noah-backend.pid"
+
+      - name: Aguardar saúde do backend
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --silent --show-error --fail http://127.0.0.1:8080/health \
+              | jq -e '.status == "ok"' > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Backend health check did not become ready."
+          exit 1
+
+      - name: Executar pipeline documental com Gemini real
+        id: e2e
+        continue-on-error: true
+        env:
+          SOURCE_TYPE: ${{ inputs.source_type }}
+          TEST_CASE: ${{ inputs.test_case }}
+          SUBJECT: ${{ inputs.subject }}
+          GRADE: ${{ inputs.grade }}
+        run: |
+          if [ "$SOURCE_TYPE" = "ppt" ]; then
+            extraction_status=$(curl --silent --show-error \
+              --output "$E2E_OUTPUT/ppt-extraction.json" \
+              --write-out '%{http_code}' \
+              --form "file=@$RUNNER_TEMP/artificial-document.ppt;type=application/vnd.ms-powerpoint" \
+              http://127.0.0.1:8080/v1/materials/ppt/extract)
+            if [ "$extraction_status" -lt 200 ] || [ "$extraction_status" -ge 300 ]; then
+              echo "PPT extraction returned HTTP $extraction_status."
+              exit 1
+            fi
+            jq -e 'type == "object" and (.usableForGeneration == true) and (.text | type == "string" and length > 0)' \
+              "$E2E_OUTPUT/ppt-extraction.json" > /dev/null
+
+            jq -n \
+              --arg sourceType "ppt" \
+              --arg sourceTitle "Fixture PPT artificial" \
+              --arg subject "$SUBJECT" \
+              --arg grade "$GRADE" \
+              --arg text "$(jq -r '.text' "$E2E_OUTPUT/ppt-extraction.json")" \
+              '{sourceType:$sourceType, sourceTitle:$sourceTitle, subject:$subject, grade:$grade, text:$text}' \
+              > "$RUNNER_TEMP/document-request.json"
+            analysis_start=$(date +%s)
+            analysis_status=$(curl --silent --show-error \
+              --output "$E2E_OUTPUT/analysis.json" \
+              --write-out '%{http_code}' \
+              --header 'Content-Type: application/json' \
+              --data-binary "@$RUNNER_TEMP/document-request.json" \
+              http://127.0.0.1:8080/v1/materials/text/analyze)
+            analysis_end=$(date +%s)
+            echo "$((analysis_end - analysis_start))" > "$E2E_OUTPUT/analysis-duration-seconds.txt"
+            if [ "$analysis_status" -lt 200 ] || [ "$analysis_status" -ge 300 ]; then
+              echo "PPT document analysis returned HTTP $analysis_status."
+              exit 1
+            fi
+            jq -e 'type == "object" and (.summary | type == "string" and length > 0) and (.themes | type == "array" and length > 0) and (all(.themes[]; (.concepts | type == "array" and length > 0) and (.learningObjectives | type == "array" and length > 0)))' \
+              "$E2E_OUTPUT/analysis.json" > /dev/null
+
+            generation_start=$(date +%s)
+            activity_status=$(curl --silent --show-error \
+              --output "$E2E_OUTPUT/activity.json" \
+              --write-out '%{http_code}' \
+              --form "file=@$RUNNER_TEMP/artificial-document.ppt;type=application/vnd.ms-powerpoint" \
+              --form-string "subject=$SUBJECT" \
+              --form-string "grade=$GRADE" \
+              http://127.0.0.1:8080/v1/activities/from-ppt)
+            generation_end=$(date +%s)
+            echo "$((generation_end - generation_start))" > "$E2E_OUTPUT/generation-duration-seconds.txt"
+          else
+            jq -n \
+              --arg sourceType "$SOURCE_TYPE" \
+              --arg sourceTitle "Fixture artificial: $TEST_CASE" \
+              --arg subject "$SUBJECT" \
+              --arg grade "$GRADE" \
+              --rawfile text "$RUNNER_TEMP/document-fixture.txt" \
+              '{sourceType:$sourceType, sourceTitle:$sourceTitle, subject:$subject, grade:$grade, text:$text}' \
+              > "$RUNNER_TEMP/document-request.json"
+
+            analysis_start=$(date +%s)
+            analysis_status=$(curl --silent --show-error \
+              --output "$E2E_OUTPUT/analysis.json" \
+              --write-out '%{http_code}' \
+              --header 'Content-Type: application/json' \
+              --data-binary "@$RUNNER_TEMP/document-request.json" \
+              http://127.0.0.1:8080/v1/materials/text/analyze)
+            analysis_end=$(date +%s)
+            echo "$((analysis_end - analysis_start))" > "$E2E_OUTPUT/analysis-duration-seconds.txt"
+            if [ "$analysis_status" -lt 200 ] || [ "$analysis_status" -ge 300 ]; then
+              echo "Document analysis returned HTTP $analysis_status."
+              exit 1
+            fi
+            jq -e 'type == "object" and (.summary | type == "string" and length > 0) and (.themes | type == "array" and length > 0) and (all(.themes[]; (.concepts | type == "array" and length > 0) and (.learningObjectives | type == "array" and length > 0)))' \
+              "$E2E_OUTPUT/analysis.json" > /dev/null
+
+            generation_start=$(date +%s)
+            activity_status=$(curl --silent --show-error \
+              --output "$E2E_OUTPUT/activity.json" \
+              --write-out '%{http_code}' \
+              --header 'Content-Type: application/json' \
+              --data-binary "@$RUNNER_TEMP/document-request.json" \
+              http://127.0.0.1:8080/v1/activities/from-text)
+            generation_end=$(date +%s)
+            echo "$((generation_end - generation_start))" > "$E2E_OUTPUT/generation-duration-seconds.txt"
+          fi
+
+          if [ "$activity_status" -lt 200 ] || [ "$activity_status" -ge 300 ]; then
+            echo "Activity generation returned HTTP $activity_status."
+            exit 1
+          fi
+          jq -e 'type == "object" and (.activityType | type == "string" and length > 0) and (.themes | type == "array" and length > 0) and ([.themes[].questions[]?] | length > 0)' \
+            "$E2E_OUTPUT/activity.json" > /dev/null
+
+          if [ "$SUBJECT" = "Matemática" ]; then
+            jq -e '.activityType == "MATH_PROBLEMS" and (all(.themes[]; (.questions | length == 5) and all(.questions[]; (.solutionSteps | type == "array" and length > 0))))' \
+              "$E2E_OUTPUT/activity.json" > /dev/null
+          else
+            jq -e 'all(.themes[]; (.questions | length == 5) and (([.questions[] | select(.answer == true)] | length) == 2 or ([.questions[] | select(.answer == true)] | length) == 3) and ([.questions[] | select(.difficulty == "easy")] | length) <= 1 and all(.questions[]; (.cognitiveDemand | type == "string" and length > 0) and (.constructionType | type == "string" and length > 0)))' \
+              "$E2E_OUTPUT/activity.json" > /dev/null
+          fi
+
+      - name: Criar relatório legível
+        if: always()
+        env:
+          CODE_REF: ${{ inputs.code_ref }}
+          SOURCE_TYPE: ${{ inputs.source_type }}
+          TEST_CASE: ${{ inputs.test_case }}
+          SUBJECT: ${{ inputs.subject }}
+          GRADE: ${{ inputs.grade }}
+        run: |
+          analysis="$E2E_OUTPUT/analysis.json"
+          activity="$E2E_OUTPUT/activity.json"
+          extraction="$E2E_OUTPUT/ppt-extraction.json"
+          title="não disponível"
+          themes="não disponível"
+          theme_count=0
+          question_count=0
+          true_count=0
+          false_count=0
+          difficulties="não disponível"
+          cognitive_types="não disponível"
+          analysis_warnings="não disponível"
+          activity_warnings="não disponível"
+          analysis_duration="não disponível"
+          generation_duration="não disponível"
+
+          if jq -e 'type == "object"' "$analysis" > /dev/null 2>&1; then
+            title=$(jq -r '.sourceTitle // "não disponível"' "$analysis")
+            themes=$(jq -r '[.themes[]?.name] | if length == 0 then "nenhum" else join(", ") end' "$analysis")
+            theme_count=$(jq -r '[.themes[]?] | length' "$analysis")
+            analysis_warnings=$(jq -r '[.warnings[]?] | if length == 0 then "nenhum" else join("; ") end' "$analysis")
+          elif jq -e 'type == "object"' "$extraction" > /dev/null 2>&1; then
+            title=$(jq -r '.fileName // "Fixture PPT artificial"' "$extraction")
+          fi
+          if jq -e 'type == "object"' "$activity" > /dev/null 2>&1; then
+            if [ "$themes" = "não disponível" ]; then
+              themes=$(jq -r '[.themes[]?.name] | if length == 0 then "nenhum" else join(", ") end' "$activity")
+              theme_count=$(jq -r '[.themes[]?] | length' "$activity")
+            fi
+            question_count=$(jq -r '[.themes[]?.questions[]?] | length' "$activity")
+            true_count=$(jq -r '[.themes[]?.questions[]? | select(.answer == true)] | length' "$activity")
+            false_count=$(jq -r '[.themes[]?.questions[]? | select(.answer == false)] | length' "$activity")
+            difficulties=$(jq -r '[.themes[]?.questions[]?.difficulty] | group_by(.) | map("\(.[0]): \(length)") | if length == 0 then "nenhuma" else join(", ") end' "$activity")
+            cognitive_types=$(jq -r '[.themes[]?.questions[]? | (.constructionType // .cognitiveDemand // empty)] | group_by(.) | map("\(.[0]): \(length)") | if length == 0 then "não disponível" else join(", ") end' "$activity")
+            activity_warnings=$(jq -r '[.warnings[]?] | if length == 0 then "nenhum" else join("; ") end' "$activity")
+          fi
+          if [ -f "$E2E_OUTPUT/analysis-duration-seconds.txt" ]; then
+            analysis_duration="$(cat "$E2E_OUTPUT/analysis-duration-seconds.txt") s"
+          fi
+          if [ -f "$E2E_OUTPUT/generation-duration-seconds.txt" ]; then
+            generation_duration="$(cat "$E2E_OUTPUT/generation-duration-seconds.txt") s"
+          fi
+
+          {
+            echo "# Relatório E2E documental"
+            echo
+            echo "- code_ref: $CODE_REF"
+            echo "- source_type: $SOURCE_TYPE"
+            echo "- test_case: $TEST_CASE"
+            echo "- Disciplina: $SUBJECT"
+            echo "- Ano: $GRADE"
+            echo "- Título: $title"
+            echo "- Temas detectados: $themes"
+            echo "- Quantidade de temas: $theme_count"
+            echo "- Quantidade de questões: $question_count"
+            echo "- Distribuição V/F: $true_count verdadeiras / $false_count falsas"
+            echo "- Distribuição de dificuldade: $difficulties"
+            echo "- Tipos cognitivos/constructionType: $cognitive_types"
+            echo "- Warnings da análise: $analysis_warnings"
+            echo "- Warnings da atividade: $activity_warnings"
+            echo "- Modelo Gemini: $GEMINI_MODEL"
+            echo "- Duração da análise: $analysis_duration"
+            echo "- Duração da geração: $generation_duration"
+          } > "$E2E_OUTPUT/REPORT.md"
+
+          rm -f "$E2E_OUTPUT/analysis-duration-seconds.txt" "$E2E_OUTPUT/generation-duration-seconds.txt"
+
+      - name: Publicar resultados para diagnóstico
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Estude-Noah-Document-E2E-Result
+          path: |
+            document-e2e-output/analysis.json
+            document-e2e-output/activity.json
+            document-e2e-output/REPORT.md
+            document-e2e-output/ppt-extraction.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Encerrar backend local
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/estude-noah-backend.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/estude-noah-backend.pid")" 2>/dev/null || true
+          fi
+
+      - name: Propagar falha da validação E2E
+        if: always() && steps.e2e.outcome == 'failure'
+        run: |
+          echo "A validação E2E documental falhou; consulte o artifact Estude-Noah-Document-E2E-Result."
+          exit 1
+
