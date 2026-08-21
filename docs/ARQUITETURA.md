@@ -32,6 +32,8 @@ Responsabilidades iniciais:
 
 A camada `backend/activity` implementa o passo posterior à análise: modelos de requisição/resposta, prompt pedagógico versionado, integração com o cliente Gemini compartilhado e validação determinística. O fluxo permanece `Material → Analysis → Activity Generation`, sem persistência e sem conexão Android nesta fase.
 
+A camada `backend/document` acrescenta análise pedagógica genérica de texto e a orquestração documento → C2.1. PDF, PPTX, DOCX, ODT e DOC mantêm extração local antes do envio do texto; `.ppt` é enviado ao backend e processado pelo HSLF existente. A conversão para o contrato pedagógico compartilhado acontece antes de delegar ao mesmo `ActivityGenerationService`, evitando um segundo motor de geração.
+
 O upload multipart da fase inicial é uma integração de desenvolvimento. A arquitetura de produção deverá usar objetos temporários em bucket privado, exclusão após processamento e lifecycle como proteção adicional.
 
 ## Área dos Pais
