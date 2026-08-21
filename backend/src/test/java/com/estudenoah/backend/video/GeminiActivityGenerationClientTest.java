@@ -35,7 +35,7 @@ class GeminiActivityGenerationClientTest {
         ArgumentCaptor<HttpRequest> sent = ArgumentCaptor.forClass(HttpRequest.class);
         verify(http).send(sent.capture(), any(HttpResponse.BodyHandler.class));
         String body = requestBody(sent.getValue());
-        assertThat(body).contains("\"store\":false", "c2-v1", "\"mime_type\":\"application/json\"");
+        assertThat(body).contains("\"store\":false", "c2.1-v1", "\"mime_type\":\"application/json\"");
         assertThat(sent.getValue().headers().firstValue("x-goog-api-key")).contains("test-key");
     }
 
@@ -84,7 +84,7 @@ class GeminiActivityGenerationClientTest {
             if (i > 1) questions.append(',');
             questions.append("{\"statement\":\"Questão ").append(i).append("\",\"answer\":")
                     .append(i % 2 == 1).append(",\"explanation\":\"Explicação ").append(i)
-                    .append("\",\"evidence\":[\"Trecho\"],\"theme\":\"Tema\",\"learningObjective\":\"Compreender\",\"difficulty\":\"medium\",\"problem\":null,\"mathAnswer\":null,\"solutionSteps\":null,\"skill\":null}");
+                    .append("\",\"evidence\":[\"Trecho\"],\"theme\":\"Tema\",\"learningObjective\":\"Compreender\",\"difficulty\":\"medium\",\"problem\":null,\"mathAnswer\":null,\"solutionSteps\":null,\"skill\":null,\"cognitiveDemand\":\"application\",\"constructionType\":\"application\"}");
         }
         return "{\"subject\":\"Língua Portuguesa\",\"grade\":\"4º Ano Ensino Fundamental\",\"activityType\":\"TRUE_FALSE\",\"themes\":[{\"name\":\"Tema\",\"questions\":["
                 + questions + "]}],\"warnings\":[]}";

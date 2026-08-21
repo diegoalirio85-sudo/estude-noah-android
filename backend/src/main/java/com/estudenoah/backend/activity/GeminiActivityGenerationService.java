@@ -20,7 +20,13 @@ public final class GeminiActivityGenerationService implements ActivityGeneration
         try {
             validator.validateRequest(request);
             GeneratedActivity result = client.generateActivity(request);
-            validator.validateResult(request, result);
+            try {
+                validator.validateResult(request, result);
+            } catch (ActivityValidationException first) {
+                if (first.kind() != ActivityValidationException.Kind.INVALID_RESPONSE) throw first;
+                result = client.generateActivity(request, first.getMessage());
+                validator.validateResult(request, result);
+            }
             return result;
         } catch (ActivityValidationException error) {
             throw switch (error.kind()) {

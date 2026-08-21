@@ -28,9 +28,11 @@
                 "problem": {"type": ["string", "null"]},
                 "mathAnswer": {"type": ["string", "null"]},
                 "solutionSteps": {"type": ["array", "null"], "items": {"type": "string"}},
-                "skill": {"type": ["string", "null"]}
+                "skill": {"type": ["string", "null"]},
+                "cognitiveDemand": {"type": ["string", "null"], "enum": ["understanding", "application", "analysis", null]},
+                "constructionType": {"type": ["string", "null"], "enum": ["concept", "application", "relation", "misconception", "source_example", null]}
               },
-              "required": ["statement", "answer", "explanation", "evidence", "theme", "learningObjective", "difficulty", "problem", "mathAnswer", "solutionSteps", "skill"]
+              "required": ["statement", "answer", "explanation", "evidence", "theme", "learningObjective", "difficulty", "problem", "mathAnswer", "solutionSteps", "skill", "cognitiveDemand", "constructionType"]
             }
           }
         },

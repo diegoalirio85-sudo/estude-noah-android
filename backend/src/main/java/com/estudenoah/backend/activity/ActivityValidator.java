@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
 @Component
 public final class ActivityValidator {
     private static final Set<String> DIFFICULTIES = Set.of("easy", "medium", "hard");
+    private static final Set<String> COGNITIVE_DEMANDS = Set.of("understanding", "application", "analysis");
+    private static final Set<String> CONSTRUCTION_TYPES = Set.of("concept", "application", "relation", "misconception", "source_example");
 
     public void validateRequest(ActivityGenerationRequest request) {
         if (request == null || blank(request.grade()) || blank(request.subject()) || request.source() == null
@@ -45,6 +47,11 @@ public final class ActivityValidator {
                 throw invalidResponse("Cada tema deve conter exatamente cinco questões válidas.");
             }
             int trueCount = 0;
+            int easyCount = 0;
+            int applicationCount = 0;
+            int sourceExampleCount = 0;
+            int misconceptionFalseCount = 0;
+            VideoAnalysis.Theme sourceTheme = findTheme(request.analysis(), theme.name());
             for (GeneratedActivity.Question question : theme.questions()) {
                 validateCommon(question, theme.name());
                 String prompt = math ? question.problem() : question.statement();
@@ -61,13 +68,70 @@ public final class ActivityValidator {
                         throw invalidResponse("Questões conceituais devem conter afirmação, resposta, explicação e evidência.");
                     }
                     if (question.answer()) trueCount++;
+                    if ("easy".equals(question.difficulty())) easyCount++;
+                    if (!COGNITIVE_DEMANDS.contains(question.cognitiveDemand())
+                            || !CONSTRUCTION_TYPES.contains(question.constructionType())) {
+                        throw invalidResponse("Toda questão conceitual deve declarar demanda cognitiva e tipo de construção válidos.");
+                    }
+                    if ("application".equals(question.constructionType()) || "relation".equals(question.constructionType())) {
+                        applicationCount++;
+                    }
+                    if ("source_example".equals(question.constructionType()) || tooLiteral(question.statement(), sourceTheme)) {
+                        sourceExampleCount++;
+                    }
+                    if (!question.answer() && "misconception".equals(question.constructionType())) misconceptionFalseCount++;
+                    if (!question.answer() && mechanicalInversion(question.statement(), sourceTheme)) {
+                        throw invalidResponse("Uma falsa foi criada por inversão mecânica de um exemplo da fonte.");
+                    }
                     rejectDuplicate(question.explanation(), explanations, "Há explicações idênticas ou muito semelhantes.");
                 }
             }
             if (!math && trueCount != 2 && trueCount != 3) {
                 throw invalidResponse("O conjunto Verdadeiro/Falso deve ter distribuição equilibrada.");
             }
+            if (!math && easyCount > 1) throw invalidResponse("Há mais de uma questão easy no conjunto.");
+            if (!math && sourceExampleCount > 2) throw invalidResponse("Há mais de duas questões excessivamente literais.");
+            if (!math && applicationCount < 2) throw invalidResponse("Faltam pelo menos duas questões de aplicação ou relação.");
+            if (!math && sourceTheme != null && !empty(sourceTheme.likelyMisconceptions()) && misconceptionFalseCount < 1) {
+                throw invalidResponse("Falta uma questão falsa baseada em misconception plausível.");
+            }
         }
+    }
+
+    private static VideoAnalysis.Theme findTheme(VideoAnalysis analysis, String name) {
+        if (analysis == null || analysis.themes() == null) return null;
+        return analysis.themes().stream().filter(theme -> theme != null && name.equals(theme.name())).findFirst().orElse(null);
+    }
+
+    private static boolean tooLiteral(String statement, VideoAnalysis.Theme theme) {
+        if (theme == null || theme.evidence() == null) return false;
+        return theme.evidence().stream().filter(java.util.Objects::nonNull)
+                .map(VideoAnalysis.Evidence::description).filter(value -> !blank(value))
+                .anyMatch(value -> tokenContainment(normalize(statement), normalize(value)) >= 0.82);
+    }
+
+    private static boolean mechanicalInversion(String statement, VideoAnalysis.Theme theme) {
+        if (theme == null || theme.evidence() == null) return false;
+        String normalized = normalize(statement);
+        for (VideoAnalysis.Evidence evidence : theme.evidence()) {
+            if (evidence == null || blank(evidence.description())) continue;
+            String source = normalize(evidence.description());
+            if (tokenContainment(normalized, source) >= 0.70
+                    && ((source.contains("crescente") && normalized.contains("decrescente"))
+                    || (source.contains("decrescente") && normalized.contains("crescente")))) return true;
+        }
+        return false;
+    }
+
+    private static double tokenContainment(String left, String right) {
+        Set<String> a = new HashSet<>(List.of(left.split(" ")));
+        Set<String> b = new HashSet<>(List.of(right.split(" ")));
+        a.removeIf(String::isBlank);
+        b.removeIf(String::isBlank);
+        if (a.isEmpty() || b.isEmpty()) return 0;
+        Set<String> intersection = new HashSet<>(a);
+        intersection.retainAll(b);
+        return (double) intersection.size() / Math.min(a.size(), b.size());
     }
 
     private static void validateCommon(GeneratedActivity.Question question, String themeName) {
