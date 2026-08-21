@@ -8,6 +8,7 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 
 @RestControllerAdvice
 public final class ApiExceptionHandler {
@@ -21,6 +22,12 @@ public final class ApiExceptionHandler {
     public ResponseEntity<ErrorResponse> handleMissingPart(MissingServletRequestPartException error) {
         return ResponseEntity.badRequest()
                 .body(new ErrorResponse("missing_file", "O campo multipart 'file' é obrigatório.", Instant.now()));
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingParameter(MissingServletRequestParameterException error) {
+        return ResponseEntity.badRequest()
+                .body(new ErrorResponse("missing_parameter", "Informe os metadados obrigatórios do material.", Instant.now()));
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
