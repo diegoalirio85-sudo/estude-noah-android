@@ -18,6 +18,14 @@ Pipeline: extração → análise → objetivo → temas → conceitos → rela�
 ## Fase D — Materiais multimodais
 Texto, voz, PDF, DOCX, ODT, PPTX, DOC, PPT, MP3, MP4 e AVI.
 
+### D0 — Home definitiva de cinco áreas
+- [x] estrutura responsiva para tablet em paisagem e retrato;
+- [x] agenda, materiais, central, atividades do dia e histórico recente;
+- [x] entradas estruturais de revisão e conquistas;
+- [x] Área dos Pais reposicionada para configuração e acompanhamento;
+- [ ] conectar providers reais de agenda, materiais e atividades;
+- [ ] substituir placeholders quando os contratos remotos estiverem definidos.
+
 ## Fase E — Área dos Pais em Sites
 Adicionar material, revisar extração, ver temas, revisar atividade, aprovar e acompanhar resultados.
 

@@ -11,6 +11,12 @@ import com.estudenoah.app.domain.PreparedActivity
 import com.estudenoah.app.domain.Question
 import com.estudenoah.app.domain.Subject
 import com.estudenoah.app.material.MaterialFileExtractor
+import com.estudenoah.app.ui.home.FiveZoneHomeScreen
+import com.estudenoah.app.ui.home.MaterialDetailScreen
+import com.estudenoah.app.ui.home.TodayMaterial
+import com.estudenoah.app.ui.parents.ParentOperationsScreen
+import com.estudenoah.app.ui.review.ReviewScreen
+import com.estudenoah.app.ui.trophy.TrophyScreen
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
@@ -136,7 +142,10 @@ private enum class AppScreen {
     QUESTION_EDITOR,
     CHANGE_PIN,
     MATERIAL_INPUT,
-    MATERIAL_PREVIEW
+    MATERIAL_PREVIEW,
+    REVIEW,
+    TROPHIES,
+    MATERIAL_DETAIL
 }
 
 private object QuestionBank {
@@ -553,6 +562,7 @@ private fun EstudeNoahApp() {
     var quizReturnScreenName by rememberSaveable { mutableStateOf(AppScreen.SUBJECTS.name) }
     var historySubjectLabel by rememberSaveable { mutableStateOf("") }
     var activePreparedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedHomeMaterial by remember { mutableStateOf<TodayMaterial?>(null) }
 
     val screen = AppScreen.valueOf(screenName)
     val selectedSubject = subjectName?.let { runCatching { Subject.valueOf(it) }.getOrNull() }
@@ -629,19 +639,29 @@ private fun EstudeNoahApp() {
             AppScreen.CHANGE_PIN -> screenName = AppScreen.PARENT_HOME.name
             AppScreen.MATERIAL_INPUT -> screenName = AppScreen.PARENT_HOME.name
             AppScreen.MATERIAL_PREVIEW -> screenName = AppScreen.MATERIAL_INPUT.name
+            AppScreen.REVIEW -> goHome()
+            AppScreen.TROPHIES -> goHome()
+            AppScreen.MATERIAL_DETAIL -> goHome()
             AppScreen.HOME -> Unit
         }
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Cream) {
         when (screen) {
-            AppScreen.HOME -> HomeScreen(
+            AppScreen.HOME -> FiveZoneHomeScreen(
                 history = localPreferences.loadHistory(),
                 preparedActivity = localPreferences.loadPreparedActivity(),
-                onStart = { screenName = AppScreen.SUBJECTS.name },
+                onCreateActivity = { screenName = AppScreen.MATERIAL_INPUT.name },
+                onQuickPractice = { screenName = AppScreen.SUBJECTS.name },
+                onReview = { screenName = AppScreen.REVIEW.name },
+                onTrophies = { screenName = AppScreen.TROPHIES.name },
                 onHistory = { screenName = AppScreen.HISTORY.name },
                 onParents = { screenName = AppScreen.PARENT_PIN.name },
-                onPrepared = ::startPrepared
+                onPrepared = ::startPrepared,
+                onMaterial = {
+                    selectedHomeMaterial = it
+                    screenName = AppScreen.MATERIAL_DETAIL.name
+                }
             )
 
             AppScreen.SUBJECTS -> SubjectScreen(onBack = ::goHome, onSelect = ::startSubject)
@@ -724,15 +744,11 @@ private fun EstudeNoahApp() {
                 onSuccess = { screenName = AppScreen.PARENT_HOME.name }
             )
 
-            AppScreen.PARENT_HOME -> ParentHomeScreen(
-                questions = localPreferences.loadCustomQuestions(),
+            AppScreen.PARENT_HOME -> ParentOperationsScreen(
+                questionCount = localPreferences.loadCustomQuestions().size,
                 onBack = ::goHome,
-                onNewQuestion = {
-                    editingQuestionId = null
-                    screenName = AppScreen.QUESTION_EDITOR.name
-                },
-                onManage = { screenName = AppScreen.PARENT_QUESTIONS.name },
-                onNewMaterial = { screenName = AppScreen.MATERIAL_INPUT.name },
+                onManageQuestions = { screenName = AppScreen.PARENT_QUESTIONS.name },
+                onImportMaterial = { screenName = AppScreen.MATERIAL_INPUT.name },
                 onChangePin = { screenName = AppScreen.CHANGE_PIN.name }
             )
 
@@ -830,120 +846,20 @@ private fun EstudeNoahApp() {
                     screenName = AppScreen.PARENT_HOME.name
                 }
             )
-        }
-    }
-}
 
-@Composable
-private fun HomeScreen(
-    history: List<HistoryEntry>,
-    preparedActivity: PreparedActivity?,
-    onStart: () -> Unit,
-    onHistory: () -> Unit,
-    onParents: () -> Unit,
-    onPrepared: (PreparedActivity) -> Unit
-) {
-    BoxWithConstraints(
-        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(24.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        val wide = maxWidth >= 700.dp
-        if (wide) {
-            Row(
-                modifier = Modifier.widthIn(max = 1000.dp),
-                horizontalArrangement = Arrangement.spacedBy(32.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                WelcomeBlock(modifier = Modifier.weight(1f))
-                HomeActions(
-                    modifier = Modifier.weight(1f),
-                    history = history,
-                    preparedActivity = preparedActivity,
-                    onStart = onStart,
-                    onHistory = onHistory,
-                    onParents = onParents,
-                    onPrepared = onPrepared
-                )
-            }
-        } else {
-            Column(
-                modifier = Modifier.fillMaxWidth().widthIn(max = 620.dp).verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                WelcomeBlock()
-                Spacer(Modifier.height(28.dp))
-                HomeActions(history = history, preparedActivity = preparedActivity, onStart = onStart, onHistory = onHistory, onParents = onParents, onPrepared = onPrepared)
-            }
-        }
-    }
-}
+            AppScreen.REVIEW -> ReviewScreen(
+                onBack = ::goHome,
+                onStart = { screenName = AppScreen.SUBJECTS.name }
+            )
 
-@Composable
-private fun WelcomeBlock(modifier: Modifier = Modifier) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(modifier = Modifier.size(110.dp).background(BlueSoft, CircleShape), contentAlignment = Alignment.Center) {
-            Text("N", fontSize = 54.sp, fontWeight = FontWeight.Black, color = Blue)
-        }
-        Spacer(Modifier.height(20.dp))
-        Text("Estude, Noah!", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black, color = Ink, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(8.dp))
-        Text("Cinco questões por vez. Um passo de cada vez.", style = MaterialTheme.typography.titleMedium, color = Muted, textAlign = TextAlign.Center)
-    }
-}
+            AppScreen.TROPHIES -> TrophyScreen(
+                history = localPreferences.loadHistory(),
+                onBack = ::goHome
+            )
 
-@Composable
-private fun HomeActions(
-    history: List<HistoryEntry>,
-    preparedActivity: PreparedActivity?,
-    onStart: () -> Unit,
-    onHistory: () -> Unit,
-    onParents: () -> Unit,
-    onPrepared: (PreparedActivity) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        if (preparedActivity != null) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = GreenSoft),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("Atividade preparada", color = Green, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(4.dp))
-                    Text(preparedActivity.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                    Text(preparedActivity.subject.label, color = Muted)
-                    Spacer(Modifier.height(12.dp))
-                    Button(onClick = { onPrepared(preparedActivity) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
-                        Text("Fazer atividade preparada", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-            Spacer(Modifier.height(14.dp))
-        }
-        Button(onClick = onStart, modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(18.dp)) {
-            Text("Começar atividade", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        }
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(onClick = onHistory, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(18.dp)) {
-            Text("Histórico", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-        }
-        Spacer(Modifier.height(6.dp))
-        TextButton(onClick = onParents, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-            Text("Área dos Pais", color = Muted, fontWeight = FontWeight.SemiBold)
-        }
-
-        if (history.isNotEmpty()) {
-            Spacer(Modifier.height(18.dp))
-            val last = history.first()
-            Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("Última atividade", color = Muted, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(6.dp))
-                    Text(last.subject, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("${last.score}/${last.total} acertos de primeira", color = Green, fontWeight = FontWeight.Bold)
-                }
-            }
+            AppScreen.MATERIAL_DETAIL -> selectedHomeMaterial?.let {
+                MaterialDetailScreen(material = it, onBack = ::goHome)
+            } ?: goHome()
         }
     }
 }

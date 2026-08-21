@@ -14,6 +14,12 @@ Camadas pretendidas:
 
 O Android permanece o cliente do aluno. Segredos e processamento dependente de Java Desktop não pertencem ao APK.
 
+### Home e navegação do aluno
+
+A Home responsiva está separada em `ui/home` e apresenta cinco áreas: agenda, materiais, central de estudos, atividades do dia e histórico recente. Dados ainda não integrados ficam em um provider demonstrativo isolado; somente o histórico recente lê dados reais por meio do contrato local existente.
+
+As telas estruturais de revisão, conquistas e operações dos pais vivem, respectivamente, em `ui/review`, `ui/trophy` e `ui/parents`. `MainActivity` mantém a coordenação temporária de rotas e encaminha callbacks aos fluxos legados, sem mover regras pedagógicas ou persistência para a UI nova.
+
 ## Backend
 
 O projeto JVM independente em `backend/` concentra processamento seguro de materiais, futura integração com IA, autenticação e sincronização.
