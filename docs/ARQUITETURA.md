@@ -14,6 +14,8 @@ Camadas pretendidas:
 
 O Android permanece o cliente do aluno. Segredos e processamento dependente de Java Desktop não pertencem ao APK.
 
+Na D1B1, a criação manual usa `data/remote`/`network`: o Android extrai texto dos formatos compatíveis, obtém App Check imediatamente antes da chamada e envia o conteúdo ao pipeline pedagógico no Cloud Run. `.ppt` binário é enviado como multipart e processado exclusivamente pelo HSLF do backend. Não há fallback automático para o gerador pedagógico local.
+
 ### Home e navegação do aluno
 
 A Home responsiva está separada em `ui/home` e apresenta cinco áreas: agenda, materiais, central de estudos, atividades do dia e histórico recente. Dados ainda não integrados ficam em um provider demonstrativo isolado; somente o histórico recente lê dados reais por meio do contrato local existente.
@@ -44,3 +46,4 @@ Material, Theme, Activity, Item e Result.
 
 ## Objetivo da refatoração
 Separar responsabilidades para que extração, geração, armazenamento e sincronização sejam independentes da UI e testáveis.
+

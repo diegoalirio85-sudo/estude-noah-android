@@ -11,6 +11,8 @@ import com.estudenoah.app.domain.PreparedActivity
 import com.estudenoah.app.domain.Question
 import com.estudenoah.app.domain.Subject
 import com.estudenoah.app.material.MaterialFileExtractor
+import com.estudenoah.app.network.BackendActivityRepository
+import com.estudenoah.app.network.BackendException
 import com.estudenoah.app.ui.home.FiveZoneHomeScreen
 import com.estudenoah.app.ui.home.MaterialDetailScreen
 import com.estudenoah.app.ui.home.TodayMaterial
@@ -18,6 +20,7 @@ import com.estudenoah.app.ui.parents.ParentOperationsScreen
 import com.estudenoah.app.ui.review.ReviewScreen
 import com.estudenoah.app.ui.trophy.TrophyScreen
 import android.os.Bundle
+import android.net.Uri
 import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -805,14 +808,7 @@ private fun EstudeNoahApp() {
                     questions = questions,
                     onBack = { screenName = AppScreen.MATERIAL_INPUT.name },
                     onRegenerate = {
-                        materialSalt += 1L
-                        val regenerated = MaterialQuestionGenerator.generate(
-                            text = materialText,
-                            subject = subject,
-                            count = 5,
-                            salt = materialSalt
-                        )
-                        if (regenerated.size == 5) materialQuestionsJson = QuestionJson.encode(regenerated)
+                        screenName = AppScreen.MATERIAL_INPUT.name
                     },
                     onSave = {
                         localPreferences.savePreparedActivity(
@@ -1504,9 +1500,14 @@ private fun MaterialInputScreen(
     var fileStatus by rememberSaveable { mutableStateOf<String?>(null) }
     var importedFiles by rememberSaveable { mutableStateOf("") }
     var importingFiles by rememberSaveable { mutableStateOf(false) }
+    var generatingActivity by rememberSaveable { mutableStateOf(false) }
+    var selectedPptUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedPptName by rememberSaveable { mutableStateOf<String?>(null) }
+    var sourceType by rememberSaveable { mutableStateOf("text") }
     val subject = runCatching { Subject.valueOf(subjectName) }.getOrDefault(Subject.PORTUGUES)
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
+    val backendRepository = remember { BackendActivityRepository() }
 
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -1536,9 +1537,30 @@ private fun MaterialInputScreen(
         importingFiles = true
         fileStatus = "Lendo ${uris.size} arquivo(s)..."
         scope.launch {
-            val results = withContext(Dispatchers.IO) {
-                uris.take(8).map { uri -> MaterialFileExtractor.extract(context, uri) }
+            val selected = withContext(Dispatchers.IO) {
+                uris.take(8).map { uri -> uri to MaterialFileExtractor.displayName(context, uri) }
             }
+            val legacyPpts = selected.filter { (_, name) -> name.substringAfterLast('.', "").equals("ppt", ignoreCase = true) }
+            if (legacyPpts.isNotEmpty()) {
+                if (selected.size != 1) {
+                    error = "Para analisar PowerPoint antigo, selecione apenas um arquivo .ppt por vez."
+                    importingFiles = false
+                    return@launch
+                }
+                selectedPptUri = legacyPpts.first().first.toString()
+                selectedPptName = legacyPpts.first().second
+                sourceType = "ppt"
+                text = ""
+                importedFiles = legacyPpts.first().second
+                fileStatus = "• ${legacyPpts.first().second}: o arquivo será analisado com segurança pelo servidor."
+                if (title.isBlank()) title = legacyPpts.first().second.substringBeforeLast('.').take(80)
+                error = null
+                importingFiles = false
+                return@launch
+            }
+            selectedPptUri = null
+            selectedPptName = null
+            val results = withContext(Dispatchers.IO) { selected.map { (uri, _) -> MaterialFileExtractor.extract(context, uri) } }
             val usableTexts = results.mapNotNull { result ->
                 result.extractedText.takeIf { it.isNotBlank() }
                     ?.let { "[${result.fileName}]\n$it" }
@@ -1552,6 +1574,7 @@ private fun MaterialInputScreen(
                 }
             }
             importedFiles = results.joinToString(" • ") { it.fileName }
+            sourceType = results.singleOrNull()?.extension?.ifBlank { "text" } ?: "text"
             fileStatus = results.joinToString("\n") { "• ${it.fileName}: ${it.message}" }
             importingFiles = false
         }
@@ -1653,6 +1676,9 @@ private fun MaterialInputScreen(
             OutlinedButton(
                 onClick = {
                     text = ""
+                    selectedPptUri = null
+                    selectedPptName = null
+                    sourceType = "text"
                     importedFiles = ""
                     fileStatus = null
                     error = null
@@ -1687,7 +1713,7 @@ private fun MaterialInputScreen(
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "DOCX, PPTX e ODT têm o texto extraído localmente. PDF depende do mecanismo PDF atualizado do Android. DOC/PPT antigos usam extração experimental. MP3/MP4/AVI podem ser selecionados, mas a transcrição automática do áudio entra na próxima etapa.",
+                "PDF, DOC, DOCX, PPTX e ODT usam o texto extraído no tablet. PowerPoint antigo (.ppt) é analisado pelo servidor. MP3/MP4/AVI ainda não possuem transcrição automática.",
                 color = Muted,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center
@@ -1707,28 +1733,48 @@ private fun MaterialInputScreen(
                 }
             }
 
+            if (generatingActivity) {
+                Spacer(Modifier.height(10.dp))
+                Card(colors = CardDefaults.cardColors(containerColor = BlueSoft), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                    Text("Analisando o material e preparando a atividade…", color = Blue, fontWeight = FontWeight.Bold, modifier = Modifier.padding(14.dp))
+                }
+            }
+
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {
                     val cleanText = text.trim()
-                    val generated = MaterialQuestionGenerator.generate(cleanText, subject, count = 5)
-                    if (generated.size < 5) {
-                        error = if (subject == Subject.MATEMATICA) {
-                            "Não consegui criar 5 questões de Matemática a partir desse material. Confira o conteúdo ou acrescente mais texto."
-                        } else {
-                            "Não consegui criar 5 afirmações seguras a partir desse material. Confira o texto extraído ou acrescente mais conteúdo."
+                    val cleanTitle = title.trim().ifBlank { "Material de ${subject.label}" }
+                    generatingActivity = true
+                    error = null
+                    scope.launch {
+                        try {
+                            val questions = withContext(Dispatchers.IO) {
+                                val pptUri = selectedPptUri?.let(Uri::parse)
+                                when {
+                                    pptUri != null -> backendRepository.fromPpt(context, pptUri, selectedPptName ?: "material.ppt", subject.label)
+                                    Regex("^https?://(?:www\\.)?(?:youtube\\.com|youtu\\.be)/", RegexOption.IGNORE_CASE).containsMatchIn(cleanText) ->
+                                        backendRepository.fromYoutube(cleanText, subject.label)
+                                    else -> backendRepository.fromText(sourceType, cleanTitle, subject.label, cleanText)
+                                }
+                            }
+                            if (questions.isEmpty()) throw BackendException(code = "incompatible_response", message = "No questions returned.")
+                            onGenerate(subject, cleanTitle, cleanText, questions)
+                        } catch (failure: BackendException) {
+                            error = failure.userMessage()
+                        } catch (_: Exception) {
+                            error = "Não foi possível preparar a atividade. Tente novamente."
+                        } finally {
+                            generatingActivity = false
                         }
-                    } else {
-                        val cleanTitle = title.trim().ifBlank { "Material de ${subject.label}" }
-                        onGenerate(subject, cleanTitle, cleanText, generated)
                     }
                 },
-                enabled = text.trim().length >= 140 && !importingFiles,
+                enabled = !generatingActivity && !importingFiles && (selectedPptUri != null || text.trim().length >= 140 || Regex("^https?://(?:www\\.)?(?:youtube\\.com|youtu\\.be)/", RegexOption.IGNORE_CASE).containsMatchIn(text.trim())),
                 modifier = Modifier.fillMaxWidth().height(62.dp),
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Text(
-                    if (subject == Subject.MATEMATICA) "Gerar 5 questões de Matemática" else "Gerar 5 afirmações (V/F)",
+                    if (generatingActivity) "Preparando atividade…" else if (subject == Subject.MATEMATICA) "Gerar atividade de Matemática" else "Gerar atividade pedagógica",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 )
@@ -1796,14 +1842,14 @@ private fun MaterialPreviewScreen(
 
             Button(
                 onClick = onSave,
-                enabled = questions.size == 5,
+                enabled = questions.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().height(62.dp),
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Text("Salvar como atividade preparada", fontWeight = FontWeight.Bold, fontSize = 17.sp)
             }
             Spacer(Modifier.height(10.dp))
-            OutlinedButton(onClick = onTest, enabled = questions.size == 5, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(18.dp)) {
+            OutlinedButton(onClick = onTest, enabled = questions.isNotEmpty(), modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(18.dp)) {
                 Text("Testar atividade agora", fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(6.dp))
@@ -1912,3 +1958,4 @@ private fun PinField(label: String, value: String, onValueChange: (String) -> Un
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
     )
 }
+

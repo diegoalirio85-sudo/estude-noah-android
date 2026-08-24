@@ -31,7 +31,7 @@ Texto, voz, PDF, DOCX, ODT, PPTX, DOC, PPT, MP3, MP4 e AVI.
 - [x] orquestração texto → C2.1 → atividade;
 - [x] orquestração `.ppt` → HSLF → C2.1 → atividade;
 - [x] limites explícitos sem truncamento e preparação para chunking;
-- [ ] D1B: conectar o cliente Android aos endpoints documentais;
+- [x] D1B1: conectar a criação manual Android aos pipelines documentais e YouTube protegidos por App Check;
 - [ ] adicionar E2E manual com PDF artificial ou público.
 
 ## Fase E — Área dos Pais em Sites
@@ -45,3 +45,4 @@ Identificar dificuldades, ajustar dificuldade, repetir habilidades em novos cont
 
 ## Fase H — Automação escolar
 Somente após o núcleo pedagógico estar estável: agenda, AVA, materiais do dia e preparação automática.
+

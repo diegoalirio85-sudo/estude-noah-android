@@ -27,6 +27,15 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    val backendBaseUrl = providers.gradleProperty("ESTUDE_NOAH_BACKEND_BASE_URL")
+        .orElse(providers.environmentVariable("ESTUDE_NOAH_BACKEND_BASE_URL"))
+        .orElse("https://estude-noah-backend-rgwyoc2iwa-rj.a.run.app")
+
+    defaultConfig {
+        buildConfigField("String", "ESTUDE_NOAH_BACKEND_BASE_URL", "\"${backendBaseUrl.get()}\"")
     }
 
     compileOptions {
@@ -57,5 +66,8 @@ dependencies {
     implementation("com.google.firebase:firebase-appcheck")
     implementation("com.google.firebase:firebase-appcheck-playintegrity")
     debugImplementation("com.google.firebase:firebase-appcheck-debug")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20250517")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }
 
