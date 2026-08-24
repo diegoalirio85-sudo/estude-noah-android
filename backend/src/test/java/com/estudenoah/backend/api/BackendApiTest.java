@@ -23,11 +23,12 @@ import com.estudenoah.backend.document.GeminiDocumentAnalysisService;
 import com.estudenoah.backend.material.PptExtractionResult;
 import com.estudenoah.backend.material.PptExtractionException;
 import com.estudenoah.backend.video.VideoAnalysis;
+import com.estudenoah.backend.security.AppCheckTokenVerifier;
 import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-@WebMvcTest({HealthController.class, MaterialController.class, YoutubeMaterialController.class, ActivityController.class,
+@WebMvcTest(properties = "security.app-check.enabled=false", value = {HealthController.class, MaterialController.class, YoutubeMaterialController.class, ActivityController.class,
         DocumentController.class, DocumentActivityPipelineService.class, GeminiDocumentAnalysisService.class,
         YoutubeUrlNormalizer.class, ApiExceptionHandler.class})
 class BackendApiTest {
@@ -45,6 +46,9 @@ class BackendApiTest {
 
     @MockitoBean
     private DocumentAnalysisProvider documentAnalysisProvider;
+
+    @MockitoBean
+    private AppCheckTokenVerifier appCheckTokenVerifier;
 
     @Test
     void healthDoesNotDependOnExternalServices() throws Exception {
@@ -160,3 +164,4 @@ class BackendApiTest {
         return new DocumentAnalysis(type, "Aula", "Ciências", "Resumo", List.of(theme), List.of());
     }
 }
+
