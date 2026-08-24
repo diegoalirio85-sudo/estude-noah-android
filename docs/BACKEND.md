@@ -80,7 +80,9 @@ O padrão é `upload → processamento → extração → exclusão`. O serviço
 
 Credenciais, tokens, chaves Gemini e JSON de service account não pertencem ao repositório nem ao APK. Em Cloud Run, usar identidade do serviço e Secret Manager. O arquivo `.env.example` contém apenas nomes e valores não secretos.
 
-Antes de produção ainda são obrigatórios autenticação, limitação de taxa, auditoria sem conteúdo escolar, política de retenção e revisão da superfície de upload.
+O acesso de produção exige Firebase App Check no header `X-Firebase-AppCheck`. `/health` permanece público; todos os endpoints de processamento em `/v1` são protegidos. A verificação usa as chaves públicas rotativas do Firebase, valida assinatura RS256, issuer, audience, expiração e App ID opcional. Consulte `docs/DEPLOYMENT.md`.
+
+A limitação de taxa inicial é local por instância e combina App ID, resumo irreversível do token e IP. Ela reduz abuso acidental, mas não substitui uma solução distribuída caso o Cloud Run escale para várias instâncias.
 
 ## YouTube e Gemini
 
@@ -143,3 +145,4 @@ O fluxo é stateless e não salva conteúdo ou atividades. Conteúdo insuficient
 ## Estratégia futura para o AVA
 
 Links intermediários do AVA Antônio Vieira devem ser resolvidos no backend com lista de destinos permitidos, limite de redirecionamentos e proteção contra SSRF. Login no AVA, captura de agenda e extensão de navegador permanecem fora desta fase.
+
