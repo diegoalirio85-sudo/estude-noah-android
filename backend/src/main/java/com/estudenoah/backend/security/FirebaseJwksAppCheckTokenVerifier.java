@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -34,6 +35,7 @@ public final class FirebaseJwksAppCheckTokenVerifier implements AppCheckTokenVer
     private final Clock clock;
     private volatile CachedKeys cachedKeys = new CachedKeys(Map.of(), 0);
 
+    @Autowired
     public FirebaseJwksAppCheckTokenVerifier(
             @Value("${firebase.project-number:${FIREBASE_PROJECT_NUMBER:}}") String projectNumber,
             @Value("${firebase.allowed-app-ids:${FIREBASE_APP_IDS:}}") String allowedAppIds,
