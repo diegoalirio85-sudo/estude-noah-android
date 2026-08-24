@@ -34,6 +34,15 @@ public class GeminiConfiguration {
                 Duration.ofMinutes(3), diagnosticPath);
     }
 
+    @Bean
+    GeminiDocumentAnalysisClient geminiDocumentAnalysisClient(ObjectMapper mapper, GeminiSettings settings) {
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .build();
+        return new GeminiDocumentAnalysisClient(httpClient, mapper, settings, INTERACTIONS_ENDPOINT, Duration.ofMinutes(3));
+    }
+
     record GeminiSettings(String apiKey, String model) {
     }
 }

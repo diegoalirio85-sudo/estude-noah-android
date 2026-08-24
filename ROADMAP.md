@@ -26,6 +26,14 @@ Texto, voz, PDF, DOCX, ODT, PPTX, DOC, PPT, MP3, MP4 e AVI.
 - [ ] conectar providers reais de agenda, materiais e atividades;
 - [ ] substituir placeholders quando os contratos remotos estiverem definidos.
 
+### D1A — Pipeline pedagógico para documentos
+- [x] análise estruturada de texto documental com fidelidade à fonte;
+- [x] orquestração texto → C2.1 → atividade;
+- [x] orquestração `.ppt` → HSLF → C2.1 → atividade;
+- [x] limites explícitos sem truncamento e preparação para chunking;
+- [ ] D1B: conectar o cliente Android aos endpoints documentais;
+- [ ] adicionar E2E manual com PDF artificial ou público.
+
 ## Fase E — Área dos Pais em Sites
 Adicionar material, revisar extração, ver temas, revisar atividade, aprovar e acompanhar resultados.
 
