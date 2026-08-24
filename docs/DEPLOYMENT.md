@@ -36,7 +36,7 @@ Token ausente ou inválido recebe `401`; excesso de chamadas recebe `429`. A val
 2. Cadastre o SHA-256 do certificado que assina cada variante distribuída.
 3. Baixe o `google-services.json` gerado pelo console somente depois de conferir projeto e package.
 
-O `google-services.json` contém identificadores públicos de configuração, não uma chave privada. Este PR não inventa nem versiona o arquivo. A decisão de versioná-lo deve considerar a política do repositório; credenciais administrativas nunca devem ser incluídas nele.
+O `google-services.json` contém identificadores públicos de configuração, não uma chave privada. O arquivo real validado para `comestudenoahapp` e `com.estudenoah.app` é versionado em `app/google-services.json`; credenciais administrativas nunca devem ser incluídas nele.
 
 ## 3. App Check e APK fora da Play Store
 
@@ -48,7 +48,7 @@ Não habilite enforcement antes de registrar o app, os certificados e os disposi
 
 ## 4. Configuração Android
 
-Adicione `app/google-services.json` obtido do Firebase e aplique o plugin oficial `com.google.gms.google-services` quando a configuração real estiver disponível. Sem esse arquivo, o APK continua compilando e a inicialização retorna indisponível; nenhum fluxo atual chama o backend nesta fase.
+O módulo Android aplica o plugin oficial `com.google.gms.google-services` e processa `app/google-services.json`. A configuração preserva o package `com.estudenoah.app`; nenhum fluxo atual chama o backend nesta fase.
 
 `FirebaseAppCheckTokenProvider` prepara a obtenção futura de token. A chamada remota deverá enviar o valor exclusivamente no header `X-Firebase-AppCheck`, nunca na URL ou em logs.
 
