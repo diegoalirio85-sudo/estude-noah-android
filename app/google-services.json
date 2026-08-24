@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1048661265103",
+    "project_id": "comestudenoahapp",
+    "storage_bucket": "comestudenoahapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1048661265103:android:78e26aa9cc07930e4c85ba",
+        "android_client_info": {
+          "package_name": "com.estudenoah.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB8mkb-2uB5IQynxLWm90kJJldsVfwwSkg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
