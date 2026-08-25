@@ -4,10 +4,6 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val backendBaseUrl = providers.gradleProperty("ESTUDE_NOAH_BACKEND_BASE_URL")
-    .orElse(providers.environmentVariable("ESTUDE_NOAH_BACKEND_BASE_URL"))
-    .orElse("https://estude-noah-backend-rgwyoc2iwa-rj.a.run.app")
-
 android {
     namespace = "com.estudenoah.app"
     compileSdk = 37
@@ -18,7 +14,6 @@ android {
         targetSdk = 37
         versionCode = 6
         versionName = "3.3"
-        buildConfigField("String", "ESTUDE_NOAH_BACKEND_BASE_URL", "\"${backendBaseUrl.get()}\"")
     }
 
     signingConfigs {
@@ -30,9 +25,24 @@ android {
         }
     }
 
+    buildTypes {
+        create("sideload") {
+            initWith(getByName("debug"))
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    val backendBaseUrl = providers.gradleProperty("ESTUDE_NOAH_BACKEND_BASE_URL")
+        .orElse(providers.environmentVariable("ESTUDE_NOAH_BACKEND_BASE_URL"))
+        .orElse("https://estude-noah-backend-rgwyoc2iwa-rj.a.run.app")
+
+    defaultConfig {
+        buildConfigField("String", "ESTUDE_NOAH_BACKEND_BASE_URL", "\"${backendBaseUrl.get()}\"")
     }
 
     compileOptions {
