@@ -19,7 +19,15 @@ A série temporária centralizada é `4º Ano Ensino Fundamental`.
 
 Cada endpoint protegido recebe `X-Firebase-AppCheck` obtido imediatamente antes da requisição. O SDK pode usar seu cache normal; o aplicativo não persiste nem registra o token. Em `401` com código `app_check_token_invalid`, há somente uma nova tentativa com `forceRefresh=true`. Outros erros não geram loop.
 
-Debug usa `DebugAppCheckProviderFactory`; release usa Play Integrity. O backend nunca possui bypass. No primeiro teste em tablet, capture o token debug no Logcat e registre-o no Firebase Console, sem versioná-lo.
+Cada variante escolhe explicitamente seu provider App Check:
+
+- `debug`: `DebugAppCheckProviderFactory`, somente para desenvolvimento local com Logcat disponível;
+- `sideload`: `PlayIntegrityAppCheckProviderFactory`, para o teste físico fora do Google Play;
+- `release`: `PlayIntegrityAppCheckProviderFactory`.
+
+O backend nunca possui bypass. A variante `sideload` não recebe a dependência `firebase-appcheck-debug`, não contém token fixo e mantém o mesmo `applicationId`, URL do backend e assinatura debug do APK de teste existente.
+
+Para teste sideload, registre no Firebase o SHA-256 do certificado de `app/debug.keystore` e configure o App Check/Play Integrity para aceitar distribuição fora do Google Play: `PLAY_RECOGNIZED` não obrigatório, `LICENSED` não obrigatório e integridade mínima `Device integrity`. Não ative enforcement adicional até concluir a validação. Um APK assinado por outro certificado não pode ser atualizado por esta variante sem desinstalação.
 
 ## Mapeamento e Matemática
 
