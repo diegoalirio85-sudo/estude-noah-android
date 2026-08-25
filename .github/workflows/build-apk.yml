@@ -38,13 +38,21 @@ jobs:
           gradle-version: '9.4.1'
 
       - name: Testar e compilar APK
-        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug --stacktrace
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleSideload --stacktrace
 
       - name: Publicar APK para download
         uses: actions/upload-artifact@v4
         with:
           name: Estude-Noah-APK
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publicar APK sideload com Play Integrity
+        uses: actions/upload-artifact@v4
+        with:
+          name: Estude-Noah-Sideload-APK
+          path: app/build/outputs/apk/sideload/app-sideload.apk
           if-no-files-found: error
           retention-days: 30
 
