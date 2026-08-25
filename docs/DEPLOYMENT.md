@@ -42,7 +42,9 @@ O `google-services.json` contém identificadores públicos de configuração, n�
 
 Para produção, registre Play Integrity no App Check e associe o SHA-256 correto. O App Check aceita distribuição fora da Play Store quando as opções de reconhecimento/licenciamento forem configuradas para esse canal; não exija `PLAY_RECOGNIZED` ou `LICENSED` para um APK exclusivamente sideloaded. Avalie o nível de integridade do dispositivo conforme os aparelhos reais.
 
-Para debug, a variante `debug` usa `DebugAppCheckProviderFactory`. Instale o APK, capture o debug token exibido pelo SDK e cadastre-o no Firebase Console. Esse token é credencial de teste: não o versione nem o use em produção. A variante `release` usa somente Play Integrity.
+Para desenvolvimento local, a variante `debug` usa `DebugAppCheckProviderFactory`; seu token é credencial de teste e nunca deve ser versionado. Para o tablet corporativo sem ADB/Logcat, use o artifact `Estude-Noah-Sideload-APK`: a variante `sideload` usa `PlayIntegrityAppCheckProviderFactory`, a mesma assinatura debug do APK de teste e não inclui `firebase-appcheck-debug`. A variante `release` também usa somente Play Integrity.
+
+Antes do teste sideload, registre no Firebase o SHA-256 de `app/debug.keystore`. Na configuração App Check do aplicativo Android para distribuição exclusivamente fora do Google Play, deixe `PLAY_RECOGNIZED` e `LICENSED` como não obrigatórios e selecione `Device integrity` como integridade mínima. Não é necessário cadastrar debug secret, não há token fixo no APK e o backend permanece sem bypass.
 
 Não habilite enforcement antes de registrar o app, os certificados e os dispositivos de teste. O backend, porém, deve permanecer protegido antes de ser exposto publicamente.
 
