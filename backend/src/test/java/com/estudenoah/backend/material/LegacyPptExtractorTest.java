@@ -30,12 +30,14 @@ class LegacyPptExtractorTest {
     }
 
     @Test
-    void extractsRealBinaryPpsPresentationWithHslf() throws Exception {
-        byte[] pps = presentation(new String[]{"Sistema Solar", "Conteúdo didático ".repeat(12)});
-        if (System.nanoTime() >= 0) {
-            throw new AssertionError("SYNTHETIC_PPS_FIXTURE_BASE64=" + java.util.Base64.getEncoder().encodeToString(pps));
+    void extractsRealPpsFixtureWithHslf() throws Exception {
+        byte[] pps;
+        try (var input = LegacyPptExtractorTest.class.getResourceAsStream("/fixtures/legacy-aula.pps")) {
+            assertThat(input).as("fixture PPS física").isNotNull();
+            pps = input.readAllBytes();
         }
 
+        assertThat(pps).startsWith((byte) 0xD0, (byte) 0xCF, (byte) 0x11, (byte) 0xE0);
         PptExtractionResult result = extractor.extract("aula.pps", new ByteArrayInputStream(pps));
 
         assertThat(result.fileName()).isEqualTo("aula.pps");
