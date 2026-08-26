@@ -1,7 +1,9 @@
 # Formatos de Material
 
 ## Entrada
-Texto digitado/colado, voz, PDF, PPT, PPTX, DOC, DOCX, ODT, MP3, MP4 e AVI.
+Texto digitado/colado, voz, PDF, PPT, PPS, PPTX, DOC, DOCX, ODT, MP3, MP4 e AVI.
+
+PPT/PPS binários legados seguem como arquivo original ao backend e usam Apache POI HSLF. PPTX permanece no fluxo OOXML separado: extração local interna e envio para `/v1/activities/from-text`. PPSX não é tratado como HSLF e não faz parte do suporte desta etapa.
 
 ## Estados internos
 Selecionado, extraindo/transcrevendo, analisando, falha e pronto. Esses estados não criam telas de conteúdo intermediário.
