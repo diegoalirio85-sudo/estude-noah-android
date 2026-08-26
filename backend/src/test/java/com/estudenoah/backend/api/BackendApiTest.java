@@ -24,6 +24,7 @@ import com.estudenoah.backend.material.PptExtractionResult;
 import com.estudenoah.backend.material.PptExtractionException;
 import com.estudenoah.backend.video.VideoAnalysis;
 import com.estudenoah.backend.security.AppCheckTokenVerifier;
+import com.estudenoah.backend.security.FirebaseAuthTokenVerifier;
 import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -49,6 +50,9 @@ class BackendApiTest {
 
     @MockitoBean
     private AppCheckTokenVerifier appCheckTokenVerifier;
+
+    @MockitoBean
+    private FirebaseAuthTokenVerifier firebaseAuthTokenVerifier;
 
     @Test
     void healthDoesNotDependOnExternalServices() throws Exception {
