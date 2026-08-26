@@ -10,6 +10,11 @@ class MaterialRoutingTest {
     @Test fun uppercasePptUsesBackend() = assertLegacy("AULA.PPT", "application/vnd.ms-powerpoint")
     @Test fun pptWithGenericMimeUsesBackend() = assertLegacy(" aula final.ppt ", "application/octet-stream")
     @Test fun pptWithNullMimeUsesBackend() = assertLegacy("aula.ppt", null)
+    @Test fun ppsWithOfficialMimeUsesBackendAndSkipsLocalExtractor() = assertLegacy("aula.pps", "application/vnd.ms-powerpoint")
+    @Test fun uppercasePpsUsesBackend() = assertLegacy("AULA.PPS", "application/vnd.ms-powerpoint")
+    @Test fun ppsWithGenericMimeUsesBackend() = assertLegacy(" aula final.pps ", "application/octet-stream")
+    @Test fun ppsWithNullMimeUsesBackend() = assertLegacy("aula.pps", null)
+    @Test fun ppsDisplayNameWinsForContentUriWithoutExtension() = assertLegacy("aula.pps", null)
     @Test fun displayNameWinsWhenContentUriPathHasNoExtension() = assertLegacy("aula.ppt", null)
 
     @Test fun pptxStaysOnLocalExtractionEvenWithAmbiguousMime() {
@@ -29,6 +34,24 @@ class MaterialRoutingTest {
 
         assertTrue(failure is IllegalStateException)
         assertFalse(localCalled)
+    }
+
+    @Test fun ppsBackendFailureNeverUsesLocalExtractorOrGenerator() {
+        var localExtractorCalled = false
+        var localGeneratorCalled = false
+        runCatching {
+            MaterialRouting.dispatch(
+                displayName = "aula.pps",
+                mimeType = "application/octet-stream",
+                legacyPpt = { error("backend failure") },
+                localExtraction = {
+                    localExtractorCalled = true
+                    localGeneratorCalled = true
+                }
+            )
+        }
+        assertFalse(localExtractorCalled)
+        assertFalse(localGeneratorCalled)
     }
 
     @Test fun officialLegacyMimeRoutesNamelessDocumentToBackend() {
