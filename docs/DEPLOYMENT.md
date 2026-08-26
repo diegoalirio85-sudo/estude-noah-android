@@ -43,7 +43,7 @@ O `google-services.json` contém identificadores públicos de configuração, n�
 1. No Firebase Console, habilite Authentication → Email/Password.
 2. Crie manualmente a conta do responsável; o Android não oferece cadastro público.
 3. Copie o UID da conta e configure-o em `ALLOWED_FIREBASE_UIDS` no Cloud Run. Separe múltiplos UIDs por vírgula.
-4. Use `BACKEND_AUTH_MODE=firebase_auth`.
+4. Use `BACKEND_AUTH_MODE=firebase_auth` e `FIREBASE_PROJECT_ID=comestudenoahapp`.
 
 O Firebase Admin SDK 9.10.0 valida assinatura, issuer, audience, expiração e UID usando Application Default Credentials da service account do Cloud Run. Não use JSON de service account. App Check permanece disponível como modo futuro `app_check`, mas não deve ser exigido simultaneamente no modo privado.
 
@@ -76,11 +76,11 @@ Implante usando identidade de workload e a porta fornecida pelo Cloud Run:
 gcloud run deploy estude-noah-backend \
   --image REGION-docker.pkg.dev/PROJECT_ID/REPOSITORY/estude-noah-backend \
   --region REGION \
-  --set-env-vars BACKEND_AUTH_MODE=firebase_auth,ALLOWED_FIREBASE_UIDS=UID_AUTORIZADO,RATE_LIMIT_REQUESTS_PER_MINUTE=30 \
+  --set-env-vars BACKEND_AUTH_MODE=firebase_auth,FIREBASE_PROJECT_ID=comestudenoahapp,ALLOWED_FIREBASE_UIDS=UID_AUTORIZADO,RATE_LIMIT_REQUESTS_PER_MINUTE=30 \
   --set-secrets GEMINI_API_KEY=GEMINI_API_KEY:latest
 ```
 
-`ALLOWED_FIREBASE_UIDS` é obrigatório no modo atual. Se estiver vazio, os endpoints protegidos recusam todas as solicitações.
+`FIREBASE_PROJECT_ID` e `ALLOWED_FIREBASE_UIDS` são obrigatórios no modo atual. O project ID é aplicado explicitamente ao `FirebaseOptions`; não se depende de metadata do Cloud Run para descobri-lo. Se qualquer configuração obrigatória estiver ausente, os endpoints protegidos falham de forma segura.
 
 Permissões mínimas:
 
