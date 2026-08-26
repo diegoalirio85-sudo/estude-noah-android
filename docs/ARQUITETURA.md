@@ -20,7 +20,7 @@ Extração de texto, transcrição, reconhecimento de fala, OCR de frames, descr
 
 Os dados intermediários podem existir em memória pelo tempo estritamente necessário à análise pedagógica, mas não devem ser persistidos integralmente nem registrados em logs. Eventual diagnóstico técnico deverá ser uma função administrativa separada da experiência normal do aluno.
 
-Na D1B1, a criação manual usa `data/remote`/`network`: o Android extrai texto dos formatos compatíveis, obtém App Check imediatamente antes da chamada e envia o conteúdo ao pipeline pedagógico no Cloud Run. `.ppt` binário é enviado como multipart e processado exclusivamente pelo HSLF do backend. Não há fallback automático para o gerador pedagógico local.
+Na D1B1, a criação manual usa `data/remote`/`network`: o Android extrai texto dos formatos compatíveis, obtém App Check imediatamente antes da chamada e envia o conteúdo ao pipeline pedagógico no Cloud Run. `.ppt` e `.pps` binários são enviados como multipart e processados exclusivamente pelo HSLF do backend. `.pptx` permanece no fluxo OOXML local; `.ppsx` não é roteado ao HSLF. Não há fallback automático para o gerador pedagógico local.
 
 ### Home e navegação do aluno
 
@@ -34,13 +34,13 @@ O projeto JVM independente em `backend/` concentra processamento seguro de mater
 
 Responsabilidades iniciais:
 - `GET /health`;
-- extração servidor-side de PowerPoint binário `.ppt` com Apache POI HSLF;
+- extração servidor-side de PowerPoint binário `.ppt`/`.pps` com Apache POI HSLF;
 - contrato futuro para análise de URLs do YouTube;
 - processamento efêmero sem retenção permanente por padrão.
 
 A camada `backend/activity` implementa o passo posterior à análise: modelos de requisição/resposta, prompt pedagógico versionado, integração com o cliente Gemini compartilhado e validação determinística. O fluxo permanece `Material → Analysis → Activity Generation`, sem persistência e sem conexão Android nesta fase.
 
-A camada `backend/document` acrescenta análise pedagógica genérica de texto e a orquestração documento → C2.1. PDF, PPTX, DOCX, ODT e DOC mantêm extração local antes do envio do texto; `.ppt` é enviado ao backend e processado pelo HSLF existente. A conversão para o contrato pedagógico compartilhado acontece antes de delegar ao mesmo `ActivityGenerationService`, evitando um segundo motor de geração.
+A camada `backend/document` acrescenta análise pedagógica genérica de texto e a orquestração documento → C2.1. PDF, PPTX, DOCX, ODT e DOC mantêm extração local antes do envio do texto; `.ppt` e `.pps` são enviados ao backend e processados pelo HSLF existente. A conversão para o contrato pedagógico compartilhado acontece antes de delegar ao mesmo `ActivityGenerationService`, evitando um segundo motor de geração.
 
 O upload multipart da fase inicial é uma integração de desenvolvimento. A arquitetura de produção deverá usar objetos temporários em bucket privado, exclusão após processamento e lifecycle como proteção adicional.
 
