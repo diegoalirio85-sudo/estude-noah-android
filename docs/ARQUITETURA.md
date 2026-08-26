@@ -14,6 +14,12 @@ Camadas pretendidas:
 
 O Android permanece o cliente do aluno. Segredos e processamento dependente de Java Desktop não pertencem ao APK.
 
+### Regra global de UX para conteúdo intermediário
+
+Extração de texto, transcrição, reconhecimento de fala, OCR de frames, descrição visual e análise multimodal são detalhes internos do pipeline. Nenhum formato atual ou futuro deve criar aba, tela, preview, painel ou botão para exibir esse conteúdo, nem exigir sua confirmação como etapa normal. O fluxo visível é **selecionar material → analisar e preparar → atividade pronta**.
+
+Os dados intermediários podem existir em memória pelo tempo estritamente necessário à análise pedagógica, mas não devem ser persistidos integralmente nem registrados em logs. Eventual diagnóstico técnico deverá ser uma função administrativa separada da experiência normal do aluno.
+
 Na D1B1, a criação manual usa `data/remote`/`network`: o Android extrai texto dos formatos compatíveis, obtém App Check imediatamente antes da chamada e envia o conteúdo ao pipeline pedagógico no Cloud Run. `.ppt` binário é enviado como multipart e processado exclusivamente pelo HSLF do backend. Não há fallback automático para o gerador pedagógico local.
 
 ### Home e navegação do aluno
