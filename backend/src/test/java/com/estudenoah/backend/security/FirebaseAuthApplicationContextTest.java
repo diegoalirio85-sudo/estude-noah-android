@@ -13,7 +13,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-@SpringBootTest(properties = {"BACKEND_AUTH_MODE=firebase_auth", "ALLOWED_FIREBASE_UIDS=allowed-uid"})
+@SpringBootTest(properties = {"BACKEND_AUTH_MODE=firebase_auth", "FIREBASE_PROJECT_ID=comestudenoahapp", "ALLOWED_FIREBASE_UIDS=allowed-uid"})
 @AutoConfigureMockMvc
 class FirebaseAuthApplicationContextTest {
     @Autowired ApplicationContext applicationContext;
