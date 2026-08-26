@@ -28,7 +28,7 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-@WebMvcTest(properties = "security.app-check.enabled=false", value = {HealthController.class, MaterialController.class, YoutubeMaterialController.class, ActivityController.class,
+@WebMvcTest(properties = {"security.app-check.enabled=false", "security.auth.mode=none"}, value = {HealthController.class, MaterialController.class, YoutubeMaterialController.class, ActivityController.class,
         DocumentController.class, DocumentActivityPipelineService.class, GeminiDocumentAnalysisService.class,
         YoutubeUrlNormalizer.class, ApiExceptionHandler.class})
 class BackendApiTest {

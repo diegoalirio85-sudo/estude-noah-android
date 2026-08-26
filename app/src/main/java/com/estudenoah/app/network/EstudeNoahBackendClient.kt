@@ -1,7 +1,8 @@
 package com.estudenoah.app.network
 
 import com.estudenoah.app.BuildConfig
-import com.estudenoah.app.security.FirebaseAppCheckTokenProvider
+import com.estudenoah.app.security.BackendLoginRequiredException
+import com.estudenoah.app.security.FirebaseIdTokenProvider
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
@@ -14,10 +15,10 @@ import org.json.JSONObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-internal const val APP_CHECK_HEADER = "X-Firebase-AppCheck"
+internal const val AUTHORIZATION_HEADER = "Authorization"
 internal const val DEFAULT_GRADE = "4º Ano Ensino Fundamental"
 
-internal fun interface AppCheckTokenSource {
+internal fun interface AuthTokenSource {
     suspend fun token(forceRefresh: Boolean): String
 }
 
@@ -26,8 +27,8 @@ internal fun interface BackendTransport {
 }
 
 internal class FirebaseTokenSource(
-    private val provider: FirebaseAppCheckTokenProvider = FirebaseAppCheckTokenProvider()
-) : AppCheckTokenSource {
+    private val provider: FirebaseIdTokenProvider = FirebaseIdTokenProvider()
+) : AuthTokenSource {
     override suspend fun token(forceRefresh: Boolean): String = suspendCancellableCoroutine { continuation ->
         provider.getToken(forceRefresh) { result ->
             if (continuation.isActive) result.fold(continuation::resume, continuation::resumeWithException)
@@ -66,7 +67,7 @@ internal class UrlConnectionBackendTransport(
 }
 
 internal class EstudeNoahBackendClient(
-    private val tokenSource: AppCheckTokenSource,
+    private val tokenSource: AuthTokenSource,
     private val transport: BackendTransport
 ) {
     suspend fun fromText(sourceType: String, sourceTitle: String, subject: String, grade: String, text: String): BackendGeneratedActivity {
@@ -123,18 +124,19 @@ internal class EstudeNoahBackendClient(
         var forceRefresh = false
         repeat(2) { attempt ->
             val token = try { tokenSource.token(forceRefresh) } catch (error: Exception) {
-                throw BackendException(status = 401, code = "app_check_token_unavailable", message = "App Check unavailable.", cause = error)
+                val code = if (error is BackendLoginRequiredException) "firebase_login_required" else "firebase_auth_token_unavailable"
+                throw BackendException(status = 401, code = code, message = "Firebase Authentication unavailable.", cause = error)
             }
-            val response = transport.execute(request.copy(headers = request.headers + (APP_CHECK_HEADER to token)))
+            val response = transport.execute(request.copy(headers = request.headers + (AUTHORIZATION_HEADER to "Bearer $token")))
             if (response.status in 200..299) return response
             val error = parseError(response)
-            if (attempt == 0 && response.status == 401 && error.code == "app_check_token_invalid") {
+            if (attempt == 0 && response.status == 401 && error.code == "firebase_auth_token_invalid") {
                 forceRefresh = true
             } else {
                 throw error
             }
         }
-        throw BackendException(status = 401, code = "app_check_token_invalid", message = "App Check rejected.")
+        throw BackendException(status = 401, code = "firebase_auth_token_invalid", message = "Firebase Authentication rejected.")
     }
 
     private fun parseError(response: BackendResponse): BackendException {

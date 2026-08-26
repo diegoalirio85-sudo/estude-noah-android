@@ -1,6 +1,7 @@
 package com.estudenoah.app.network
 
 import com.estudenoah.app.domain.Subject
+import com.estudenoah.app.security.BackendLoginRequiredException
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -11,11 +12,12 @@ import org.junit.Test
 
 class EstudeNoahBackendClientTest {
     @Test fun tokenIsObtained() = runBlocking { val f = fixture(okVf()); f.client.fromText("pdf", "A", "Ciências", DEFAULT_GRADE, text()); assertEquals(listOf(false), f.tokens.calls) }
-    @Test fun headerIsAttached() = runBlocking { val f = fixture(okVf()); f.client.fromText("pdf", "A", "Ciências", DEFAULT_GRADE, text()); assertEquals("secret-token", f.transport.requests.single().headers[APP_CHECK_HEADER]) }
+    @Test fun headerIsAttached() = runBlocking { val f = fixture(okVf()); f.client.fromText("pdf", "A", "Ciências", DEFAULT_GRADE, text()); assertEquals("Bearer secret-token", f.transport.requests.single().headers[AUTHORIZATION_HEADER]) }
     @Test fun tokenDoesNotAppearInErrors() = runBlocking { val f = fixture(error(500)); val e = expectBackend { f.client.fromText("pdf", "A", "Ciências", DEFAULT_GRADE, text()) }; assertFalse(e.message.orEmpty().contains("secret-token")) }
-    @Test fun appCheckErrorIsFriendly() = runBlocking { val f = fixture(error(401, "app_check_token_missing")); val e = expectBackend { f.client.fromText("pdf", "A", "Ciências", DEFAULT_GRADE, text()) }; assertEquals("Não foi possível validar este dispositivo. Tente novamente.", e.userMessage()) }
-    @Test fun invalidTokenRetriesOnceWithRefresh() = runBlocking { val f = fixture(error(401, "app_check_token_invalid"), okVf()); f.client.fromText("pdf", "A", "Ciências", DEFAULT_GRADE, text()); assertEquals(listOf(false, true), f.tokens.calls); assertEquals(2, f.transport.requests.size) }
-    @Test fun invalidTokenNeverLoops() = runBlocking { val f = fixture(error(401, "app_check_token_invalid"), error(401, "app_check_token_invalid")); expectBackend { f.client.fromText("pdf", "A", "Ciências", DEFAULT_GRADE, text()) }; assertEquals(2, f.transport.requests.size) }
+    @Test fun firebaseAuthErrorIsFriendly() = runBlocking { val f = fixture(error(401, "firebase_auth_token_missing")); val e = expectBackend { f.client.fromText("pdf", "A", "Ciências", DEFAULT_GRADE, text()) }; assertEquals("A sessão da Conta do backend expirou. Peça ao responsável para entrar novamente.", e.userMessage()) }
+    @Test fun unauthenticatedUserGetsFriendlyError() = runBlocking { val transport=FakeTransport(mutableListOf()); val client=EstudeNoahBackendClient(AuthTokenSource { throw BackendLoginRequiredException() },transport); val e=expectBackend { client.fromText("text","A","Português",DEFAULT_GRADE,text()) }; assertEquals("Peça ao responsável para conectar a Conta do backend na Área dos Pais.",e.userMessage()); assertTrue(transport.requests.isEmpty()) }
+    @Test fun invalidTokenRetriesOnceWithRefresh() = runBlocking { val f = fixture(error(401, "firebase_auth_token_invalid"), okVf()); f.client.fromText("pdf", "A", "Ciências", DEFAULT_GRADE, text()); assertEquals(listOf(false, true), f.tokens.calls); assertEquals(2, f.transport.requests.size) }
+    @Test fun invalidTokenNeverLoops() = runBlocking { val f = fixture(error(401, "firebase_auth_token_invalid"), error(401, "firebase_auth_token_invalid")); expectBackend { f.client.fromText("pdf", "A", "Ciências", DEFAULT_GRADE, text()) }; assertEquals(2, f.transport.requests.size) }
     @Test fun fromTextUsesExactJsonContract() = runBlocking { val f = fixture(okVf()); f.client.fromText("docx", "Título", "Português", "4º Ano", text()); val j=JSONObject(f.transport.requests.single().body.toString(Charsets.UTF_8)); assertEquals("docx",j.getString("sourceType")); assertEquals("Título",j.getString("sourceTitle")); assertEquals("Português",j.getString("subject")); assertEquals("4º Ano",j.getString("grade")); assertEquals(text(),j.getString("text")) }
     @Test fun pdfSourceTypeIsPreserved() = sourceType("pdf")
     @Test fun pptxSourceTypeIsPreserved() = sourceType("pptx")
@@ -41,7 +43,7 @@ class EstudeNoahBackendClientTest {
     private fun parse(response:BackendResponse):BackendGeneratedActivity = runBlocking { fixture(response).client.fromText("text","A","Português",DEFAULT_GRADE,text()) }
     private fun fixture(vararg responses:BackendResponse):Fixture { val t=FakeTransport(responses.toMutableList()); val tokens=FakeTokens(); return Fixture(EstudeNoahBackendClient(tokens,t),t,tokens) }
     private data class Fixture(val client:EstudeNoahBackendClient,val transport:FakeTransport,val tokens:FakeTokens)
-    private class FakeTokens:AppCheckTokenSource { val calls=mutableListOf<Boolean>(); override suspend fun token(forceRefresh:Boolean):String { calls+=forceRefresh; return if(forceRefresh) "fresh-token" else "secret-token" } }
+    private class FakeTokens:AuthTokenSource { val calls=mutableListOf<Boolean>(); override suspend fun token(forceRefresh:Boolean):String { calls+=forceRefresh; return if(forceRefresh) "fresh-token" else "secret-token" } }
     private class FakeTransport(private val responses:MutableList<BackendResponse>):BackendTransport { val requests=mutableListOf<BackendRequest>(); override suspend fun execute(request:BackendRequest):BackendResponse { requests+=request; return responses.removeAt(0) } }
     private fun error(status:Int,code:String="error")=BackendResponse(status,"{\"code\":\"$code\",\"message\":\"safe\"}")
     private fun text()="conteúdo pedagógico suficiente ".repeat(8)

@@ -24,7 +24,7 @@ class FirebaseAppCheckFilterTest {
             if (!"valid-fake-token".equals(token)) throw new AppCheckVerificationException(new IllegalArgumentException());
             return new AppCheckTokenVerifier.VerifiedApp("fake-android-app");
         };
-        var filter = new FirebaseAppCheckFilter(fake, true, 30);
+        var filter = new FirebaseAppCheckFilter(fake, true, "app_check", 30);
         mockMvc = MockMvcBuilders.standaloneSetup(new TestController()).addFilters(filter).build();
     }
 
@@ -65,7 +65,7 @@ class FirebaseAppCheckFilterTest {
     void rateLimiterRejectsRequestsBeyondConfiguredWindow() throws Exception {
         AppCheckTokenVerifier fake = token -> new AppCheckTokenVerifier.VerifiedApp("fake-android-app");
         MockMvc limited = MockMvcBuilders.standaloneSetup(new TestController())
-                .addFilters(new FirebaseAppCheckFilter(fake, true, 1)).build();
+                .addFilters(new FirebaseAppCheckFilter(fake, true, "app_check", 1)).build();
 
         limited.perform(post("/v1/activities/generate").header(FirebaseAppCheckFilter.HEADER, "valid-fake-token"))
                 .andExpect(status().isOk());

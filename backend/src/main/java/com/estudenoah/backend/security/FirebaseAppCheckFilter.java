@@ -31,18 +31,21 @@ public final class FirebaseAppCheckFilter extends OncePerRequestFilter {
     private final AppCheckTokenVerifier verifier;
     private final InMemoryRequestRateLimiter rateLimiter;
     private final boolean enabled;
+    private final String authMode;
 
     public FirebaseAppCheckFilter(AppCheckTokenVerifier verifier,
                                   @Value("${security.app-check.enabled:true}") boolean enabled,
+                                  @Value("${security.auth.mode:firebase_auth}") String authMode,
                                   @Value("${security.rate-limit.requests-per-minute:30}") int requestsPerMinute) {
         this.verifier = verifier;
         this.enabled = enabled;
+        this.authMode = authMode;
         this.rateLimiter = new InMemoryRequestRateLimiter(requestsPerMinute);
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !enabled || !"POST".equals(request.getMethod()) || !PROTECTED_POST_PATHS.contains(request.getRequestURI());
+        return !enabled || !"app_check".equals(authMode) || !"POST".equals(request.getMethod()) || !PROTECTED_POST_PATHS.contains(request.getRequestURI());
     }
 
     @Override

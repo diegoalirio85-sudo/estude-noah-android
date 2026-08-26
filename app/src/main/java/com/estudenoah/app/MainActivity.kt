@@ -17,6 +17,7 @@ import com.estudenoah.app.ui.home.FiveZoneHomeScreen
 import com.estudenoah.app.ui.home.MaterialDetailScreen
 import com.estudenoah.app.ui.home.TodayMaterial
 import com.estudenoah.app.ui.parents.ParentOperationsScreen
+import com.estudenoah.app.ui.parents.BackendAccountScreen
 import com.estudenoah.app.ui.review.ReviewScreen
 import com.estudenoah.app.ui.trophy.TrophyScreen
 import android.os.Bundle
@@ -144,6 +145,7 @@ private enum class AppScreen {
     PARENT_QUESTIONS,
     QUESTION_EDITOR,
     CHANGE_PIN,
+    BACKEND_ACCOUNT,
     MATERIAL_INPUT,
     MATERIAL_PREVIEW,
     REVIEW,
@@ -640,6 +642,7 @@ private fun EstudeNoahApp() {
             AppScreen.PARENT_QUESTIONS -> screenName = AppScreen.PARENT_HOME.name
             AppScreen.QUESTION_EDITOR -> screenName = AppScreen.PARENT_QUESTIONS.name
             AppScreen.CHANGE_PIN -> screenName = AppScreen.PARENT_HOME.name
+            AppScreen.BACKEND_ACCOUNT -> screenName = AppScreen.PARENT_HOME.name
             AppScreen.MATERIAL_INPUT -> screenName = AppScreen.PARENT_HOME.name
             AppScreen.MATERIAL_PREVIEW -> screenName = AppScreen.MATERIAL_INPUT.name
             AppScreen.REVIEW -> goHome()
@@ -752,7 +755,12 @@ private fun EstudeNoahApp() {
                 onBack = ::goHome,
                 onManageQuestions = { screenName = AppScreen.PARENT_QUESTIONS.name },
                 onImportMaterial = { screenName = AppScreen.MATERIAL_INPUT.name },
-                onChangePin = { screenName = AppScreen.CHANGE_PIN.name }
+                onChangePin = { screenName = AppScreen.CHANGE_PIN.name },
+                onBackendAccount = { screenName = AppScreen.BACKEND_ACCOUNT.name }
+            )
+
+            AppScreen.BACKEND_ACCOUNT -> BackendAccountScreen(
+                onBack = { screenName = AppScreen.PARENT_HOME.name }
             )
 
             AppScreen.PARENT_QUESTIONS -> ParentQuestionsScreen(

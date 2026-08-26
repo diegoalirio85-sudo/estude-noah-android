@@ -15,19 +15,13 @@ O APK não contém chave Gemini, service account, segredo Firebase Admin ou toke
 
 A série temporária centralizada é `4º Ano Ensino Fundamental`.
 
-## App Check e retry
+## Firebase Authentication e retry
 
-Cada endpoint protegido recebe `X-Firebase-AppCheck` obtido imediatamente antes da requisição. O SDK pode usar seu cache normal; o aplicativo não persiste nem registra o token. Em `401` com código `app_check_token_invalid`, há somente uma nova tentativa com `forceRefresh=true`. Outros erros não geram loop.
+Cada endpoint protegido recebe `Authorization: Bearer <Firebase ID token>` obtido imediatamente antes da requisição. O Firebase SDK gerencia a sessão; o aplicativo não salva senha ou token. Em `401` com código `firebase_auth_token_invalid`, há somente uma nova tentativa com `getIdToken(true)`. Outros erros não geram loop.
 
-Cada variante escolhe explicitamente seu provider App Check:
+O responsável conecta uma conta Email/Password criada manualmente no Firebase Console pela opção **Conta do backend**, protegida pelo PIN da Área dos Pais. O backend valida o ID token e exige que o UID esteja em `ALLOWED_FIREBASE_UIDS`. Não existe cadastro público no app.
 
-- `debug`: `DebugAppCheckProviderFactory`, somente para desenvolvimento local com Logcat disponível;
-- `sideload`: `PlayIntegrityAppCheckProviderFactory`, para o teste físico fora do Google Play;
-- `release`: `PlayIntegrityAppCheckProviderFactory`.
-
-O backend nunca possui bypass. A variante `sideload` não recebe a dependência `firebase-appcheck-debug`, não contém token fixo e mantém o mesmo `applicationId`, URL do backend e assinatura debug do APK de teste existente.
-
-Para teste sideload, registre no Firebase o SHA-256 do certificado de `app/debug.keystore` e configure o App Check/Play Integrity para aceitar distribuição fora do Google Play: `PLAY_RECOGNIZED` não obrigatório, `LICENSED` não obrigatório e integridade mínima `Device integrity`. Não ative enforcement adicional até concluir a validação. Um APK assinado por outro certificado não pode ser atualizado por esta variante sem desinstalação.
+App Check permanece no código como modo futuro `BACKEND_AUTH_MODE=app_check`, mas não é exigido junto com Firebase Auth. O modo privado atual não depende de Google Play Console, ADB, Logcat ou debug secret.
 
 ## Mapeamento e Matemática
 
@@ -41,8 +35,8 @@ Se o backend falhar, o aplicativo não chama silenciosamente `MaterialQuestionGe
 
 ## Teste real no tablet
 
-1. Instale o APK debug.
-2. Capture o token App Check Debug emitido pelo SDK e registre-o no Firebase Console.
+1. Instale o APK debug normal por cima da versão atual.
+2. Na Área dos Pais, abra **Conta do backend** e entre com a conta criada pelo responsável.
 3. Confirme internet e abra a criação manual.
 4. Teste texto, um documento extraído, um `.ppt` isolado e uma URL YouTube.
 5. Confirme atividade preparada, execução, resultado e histórico.

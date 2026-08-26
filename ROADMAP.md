@@ -23,6 +23,7 @@ Texto, voz, PDF, DOCX, ODT, PPTX, DOC, PPT, MP3, MP4 e AVI.
 - [x] agenda, materiais, central, atividades do dia e histórico recente;
 - [x] entradas estruturais de revisão e conquistas;
 - [x] Área dos Pais reposicionada para configuração e acompanhamento;
+- [x] acesso privado Android → backend protegido por Firebase Auth e allowlist de UID;
 - [ ] conectar providers reais de agenda, materiais e atividades;
 - [ ] substituir placeholders quando os contratos remotos estiverem definidos.
 

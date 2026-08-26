@@ -39,6 +39,8 @@ A camada `backend/document` acrescenta análise pedagógica genérica de texto e
 O upload multipart da fase inicial é uma integração de desenvolvimento. A arquitetura de produção deverá usar objetos temporários em bucket privado, exclusão após processamento e lifecycle como proteção adicional.
 
 ## Área dos Pais
+
+A opção **Conta do backend**, protegida pelo PIN, autentica o responsável via Firebase Authentication Email/Password. A sessão é mantida pelo Firebase SDK; senha e ID token não entram nas SharedPreferences. O Cloud Run valida o ID token e autoriza somente UIDs configurados em `ALLOWED_FIREBASE_UIDS`.
 Interface web/Sites.
 
 ## Modelo de domínio sugerido

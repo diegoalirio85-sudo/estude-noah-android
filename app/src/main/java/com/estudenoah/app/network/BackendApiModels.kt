@@ -42,12 +42,13 @@ internal class BackendException(
     cause: Throwable? = null
 ) : Exception(message, cause) {
     fun userMessage(): String = when {
+        code == "firebase_login_required" -> "Peça ao responsável para conectar a Conta do backend na Área dos Pais."
         code == "timeout" -> "A análise demorou mais que o esperado. Tente novamente."
         code == "invalid_json" || code == "incompatible_response" -> "O servidor retornou uma resposta incompatível. Tente novamente."
         else -> when (status) {
         null -> "Sem conexão com o servidor. Verifique a internet e tente novamente."
         400 -> "Não foi possível analisar os dados enviados. Confira o material."
-        401 -> "Não foi possível validar este dispositivo. Tente novamente."
+        401 -> "A sessão da Conta do backend expirou. Peça ao responsável para entrar novamente."
         403 -> "Este dispositivo não tem permissão para concluir a solicitação."
         413 -> "O material é grande demais para ser analisado."
         415 -> "Este formato de material não pode ser analisado."
