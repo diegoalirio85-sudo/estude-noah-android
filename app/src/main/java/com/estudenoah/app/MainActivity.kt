@@ -7,9 +7,11 @@ import android.content.Intent
 import com.estudenoah.app.data.local.LocalPreferencesRepository
 import com.estudenoah.app.domain.CustomQuestion
 import com.estudenoah.app.domain.HistoryEntry
+import com.estudenoah.app.domain.MathAnswerEvaluator
 import com.estudenoah.app.domain.PreparedActivity
 import com.estudenoah.app.domain.Question
 import com.estudenoah.app.domain.Subject
+import com.estudenoah.app.domain.StudentAnswerRecord
 import com.estudenoah.app.material.MaterialFileExtractor
 import com.estudenoah.app.network.BackendActivityRepository
 import com.estudenoah.app.network.BackendException
@@ -213,6 +215,8 @@ private object QuestionJson {
                     .put("options", JSONArray(question.options))
                     .put("correctIndex", question.correctIndex)
                     .put("explanation", question.explanation)
+                    .put("mathAnswer", question.mathAnswer)
+                    .put("solutionSteps", JSONArray(question.solutionSteps))
             )
         }
         return array.toString()
@@ -233,7 +237,11 @@ private object QuestionJson {
                         prompt = item.getString("prompt"),
                         options = options,
                         correctIndex = item.getInt("correctIndex"),
-                        explanation = item.optString("explanation", "")
+                        explanation = item.optString("explanation", ""),
+                        mathAnswer = item.optString("mathAnswer", "").ifBlank { null },
+                        solutionSteps = item.optJSONArray("solutionSteps")?.let { steps ->
+                            buildList { for (j in 0 until steps.length()) add(steps.getString(j)) }
+                        }.orEmpty()
                     )
                 )
             }
@@ -567,6 +575,7 @@ private fun EstudeNoahApp() {
     var quizReturnScreenName by rememberSaveable { mutableStateOf(AppScreen.SUBJECTS.name) }
     var historySubjectLabel by rememberSaveable { mutableStateOf("") }
     var activePreparedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var studentAnswers by remember { mutableStateOf<List<StudentAnswerRecord>>(emptyList()) }
     var selectedHomeMaterial by remember { mutableStateOf<TodayMaterial?>(null) }
 
     val screen = AppScreen.valueOf(screenName)
@@ -590,6 +599,7 @@ private fun EstudeNoahApp() {
         quizReturnScreenName = AppScreen.SUBJECTS.name
         historySubjectLabel = ""
         activePreparedId = null
+        studentAnswers = emptyList()
     }
 
     fun startActivity(
@@ -608,6 +618,7 @@ private fun EstudeNoahApp() {
         feedback = null
         quizReturnScreenName = returnScreen.name
         historySubjectLabel = historyLabel
+        studentAnswers = emptyList()
         activePreparedId = preparedId
         screenName = AppScreen.QUIZ.name
     }
@@ -699,6 +710,20 @@ private fun EstudeNoahApp() {
                                 }
                             }
                         },
+                        onMathAnswer = { studentAnswer ->
+                            if (!solved && question.isMathProblem) {
+                                val evaluation = MathAnswerEvaluator.evaluate(studentAnswer, question.mathAnswer.orEmpty())
+                                if (evaluation == true) score += 1
+                                firstAttemptAlreadyUsed = evaluation != true
+                                solved = true
+                                feedback = when (evaluation) {
+                                    true -> "Resposta correta!"
+                                    false -> "Não foi dessa vez."
+                                    null -> "Confira sua resposta."
+                                }
+                                studentAnswers = studentAnswers + StudentAnswerRecord(question.id, studentAnswer.trim(), evaluation)
+                            }
+                        },
                         onNext = {
                             if (questionIndex == activeQuestions.lastIndex) {
                                 finalScore = score
@@ -707,7 +732,8 @@ private fun EstudeNoahApp() {
                                         subject = historySubjectLabel.ifBlank { subject.label },
                                         score = score,
                                         total = activeQuestions.size,
-                                        timestamp = System.currentTimeMillis()
+                                        timestamp = System.currentTimeMillis(),
+                                        answers = studentAnswers
                                     )
                                 )
                                 if (activePreparedId != null) {
@@ -919,10 +945,14 @@ private fun QuizScreen(
     firstAttemptAlreadyUsed: Boolean,
     onBack: () -> Unit,
     onAnswer: (Int) -> Unit,
+    onMathAnswer: (String) -> Unit,
     onNext: () -> Unit
 ) {
     val wrongSelections = remember(question.id) { mutableStateListOf<Int>() }
     val trueFalse = question.options == listOf("Verdadeiro", "Falso")
+    val mathProblem = question.isMathProblem
+    val feedbackIsCorrect = !mathProblem || feedback == "Resposta correta!"
+    var mathInput by rememberSaveable(question.id) { mutableStateOf("") }
 
     Scaffold(
         containerColor = Cream,
@@ -956,7 +986,28 @@ private fun QuizScreen(
                 }
                 Spacer(Modifier.height(18.dp))
 
-                question.options.forEachIndexed { index, option ->
+                if (mathProblem) {
+                    OutlinedTextField(
+                        value = mathInput,
+                        onValueChange = { mathInput = it.take(80) },
+                        enabled = !solved,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(MathAnswerEvaluator.INPUT_LABEL) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = if (MathAnswerEvaluator.prefersNumericKeyboard(question.mathAnswer.orEmpty())) KeyboardType.Decimal else KeyboardType.Text
+                        )
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = { onMathAnswer(mathInput) },
+                        enabled = !solved && mathInput.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(18.dp)
+                    ) { Text(MathAnswerEvaluator.SUBMIT_LABEL, fontWeight = FontWeight.Bold) }
+                }
+
+                if (!mathProblem) question.options.forEachIndexed { index, option ->
                     val wasWrong = index in wrongSelections
                     val isCorrectSolved = solved && index == question.correctIndex
                     val containerColor = when {
@@ -992,12 +1043,23 @@ private fun QuizScreen(
                     Spacer(Modifier.height(14.dp))
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = if (solved) GreenSoft else RedSoft),
+                        colors = CardDefaults.cardColors(containerColor = if (solved && feedbackIsCorrect) GreenSoft else RedSoft),
                         shape = RoundedCornerShape(18.dp)
                     ) {
                         Column(Modifier.padding(18.dp)) {
-                            Text(feedback, color = if (solved) Green else Red, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                            if (solved) {
+                            Text(feedback, color = if (solved && feedbackIsCorrect) Green else Red, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            if (solved && mathProblem) {
+                                Spacer(Modifier.height(8.dp))
+                                Text("Resposta correta: ${question.mathAnswer}", color = Ink, fontWeight = FontWeight.Bold)
+                                if (question.explanation.isNotBlank()) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(question.explanation, color = Ink)
+                                }
+                                question.solutionSteps.forEachIndexed { index, step ->
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("${index + 1}. $step", color = Ink)
+                                }
+                            } else if (solved) {
                                 if (question.explanation.isNotBlank()) {
                                     Spacer(Modifier.height(6.dp))
                                     Text(question.explanation, color = Ink)
