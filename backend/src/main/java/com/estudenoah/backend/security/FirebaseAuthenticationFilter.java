@@ -52,6 +52,8 @@ public final class FirebaseAuthenticationFilter extends OncePerRequestFilter {
             if (!rateLimiter.allow(user.uid() + ":" + request.getRemoteAddr())) { reject(response, 429, "rate_limit_exceeded", "Too many requests. Try again later."); return; }
             request.setAttribute(FirebaseAuthTokenVerifier.VerifiedUser.class.getName(), user);
             chain.doFilter(request, response);
+        } catch (FirebaseAuthConfigurationException error) {
+            reject(response, 503, "firebase_auth_configuration_invalid", "Firebase Authentication is not configured.");
         } catch (FirebaseAuthVerificationException | IllegalArgumentException error) {
             reject(response, 401, "firebase_auth_token_invalid", "Firebase ID token is invalid.");
         }
