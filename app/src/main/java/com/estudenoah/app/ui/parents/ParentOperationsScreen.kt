@@ -50,4 +50,3 @@ internal fun ParentOperationsScreen(
 private fun ParentCard(title: String, detail: String) {
     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(18.dp)) { Text(title, fontWeight = FontWeight.Bold); Text(detail) } }
 }
-
