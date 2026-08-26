@@ -6,7 +6,6 @@ import com.estudenoah.app.domain.HistoryEntry
 import com.estudenoah.app.domain.PreparedActivity
 import com.estudenoah.app.domain.Question
 import com.estudenoah.app.domain.Subject
-import com.estudenoah.app.domain.StudentAnswerRecord
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -141,56 +140,14 @@ internal class LocalPreferencesRepository(context: Context) {
             LocalPersistenceContract.HISTORY_KEY,
             "[]"
         ) ?: "[]"
-        return runCatching {
-            val array = JSONArray(raw)
-            buildList {
-                for (i in 0 until array.length()) {
-                    val item = array.getJSONObject(i)
-                    add(
-                        HistoryEntry(
-                            subject = item.getString("subject"),
-                            score = item.getInt("score"),
-                            total = item.getInt("total"),
-                            timestamp = item.getLong("timestamp"),
-                            answers = item.optJSONArray("answers")?.let { answers ->
-                                buildList {
-                                    for (j in 0 until answers.length()) {
-                                        val answer = answers.getJSONObject(j)
-                                        add(StudentAnswerRecord(
-                                            questionId = answer.optString("questionId", ""),
-                                            answer = answer.optString("answer", ""),
-                                            correct = if (answer.has("correct") && !answer.isNull("correct")) answer.getBoolean("correct") else null
-                                        ))
-                                    }
-                                }
-                            }.orEmpty()
-                        )
-                    )
-                }
-            }.sortedByDescending { it.timestamp }
-        }.getOrElse { emptyList() }
+        return HistoryJsonCodec.decode(raw)
     }
 
     fun addHistory(entry: HistoryEntry) {
         val current = loadHistory().toMutableList()
         current.add(0, entry)
-        val array = JSONArray()
-        current.take(50).forEach {
-            array.put(
-                JSONObject()
-                    .put("subject", it.subject)
-                    .put("score", it.score)
-                    .put("total", it.total)
-                    .put("timestamp", it.timestamp)
-                    .put("answers", JSONArray().apply {
-                        it.answers.forEach { answer ->
-                            put(JSONObject().put("questionId", answer.questionId).put("answer", answer.answer).put("correct", answer.correct))
-                        }
-                    })
-            )
-        }
         preferences.edit()
-            .putString(LocalPersistenceContract.HISTORY_KEY, array.toString())
+            .putString(LocalPersistenceContract.HISTORY_KEY, HistoryJsonCodec.encode(current))
             .apply()
     }
 
