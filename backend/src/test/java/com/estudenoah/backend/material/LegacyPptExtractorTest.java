@@ -30,6 +30,18 @@ class LegacyPptExtractorTest {
     }
 
     @Test
+    void extractsRealBinaryPpsPresentationWithHslf() throws Exception {
+        byte[] pps = presentation(new String[]{"Sistema Solar", "Conteúdo didático ".repeat(12)});
+
+        PptExtractionResult result = extractor.extract("aula.pps", new ByteArrayInputStream(pps));
+
+        assertThat(result.fileName()).isEqualTo("aula.pps");
+        assertThat(result.slideCount()).isEqualTo(1);
+        assertThat(result.text()).contains("Sistema Solar").contains("Conteúdo didático");
+        assertThat(result.usableForGeneration()).isTrue();
+    }
+
+    @Test
     void preservesOrderAcrossMultipleSlides() throws Exception {
         byte[] ppt = presentation(
                 new String[]{"Primeiro slide"},
