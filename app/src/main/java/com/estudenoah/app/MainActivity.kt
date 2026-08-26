@@ -1538,7 +1538,12 @@ private fun MaterialInputScreen(
                 }
             }
             if (questions.isEmpty()) throw BackendException(code = "incompatible_response", message = "No questions returned.")
-            onGenerate(subject, activityTitle, if (preserveSourceInput) internalText else "", questions)
+            onGenerate(
+                subject,
+                activityTitle,
+                com.estudenoah.app.material.MaterialRouting.sourceTextForPersistence(preserveSourceInput, internalText),
+                questions
+            )
         } catch (failure: BackendException) {
             error = failure.userMessage()
             fileStatus = null
@@ -1636,7 +1641,7 @@ private fun MaterialInputScreen(
             importedFiles = results.joinToString(" • ") { it.fileName }
             sourceType = results.singleOrNull()?.extension?.ifBlank { "text" } ?: "text"
             fileStatus = if (text.length >= 140) "Analisando o material e preparando a atividade…" else
-                results.joinToString("\n") { "• ${it.fileName}: o formato ainda não forneceu conteúdo suficiente para criar uma atividade." }
+                results.joinToString("\n") { "• ${it.fileName}: ${com.estudenoah.app.material.MaterialRouting.FRIENDLY_PROCESSING_FAILURE}" }
             importingFiles = false
             if (text.length >= 140) {
                 generateActivity(
