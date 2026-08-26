@@ -32,7 +32,7 @@ class LegacyPptExtractorTest {
     @Test
     void extractsRealBinaryPpsPresentationWithHslf() throws Exception {
         byte[] pps = presentation(new String[]{"Sistema Solar", "Conteúdo didático ".repeat(12)});
-        System.out.println("SYNTHETIC_PPS_FIXTURE_BASE64=" + java.util.Base64.getEncoder().encodeToString(pps));
+        throw new AssertionError("SYNTHETIC_PPS_FIXTURE_BASE64=" + java.util.Base64.getEncoder().encodeToString(pps));
 
         PptExtractionResult result = extractor.extract("aula.pps", new ByteArrayInputStream(pps));
 
