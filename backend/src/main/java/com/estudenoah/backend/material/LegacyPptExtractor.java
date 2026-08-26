@@ -47,7 +47,7 @@ public final class LegacyPptExtractor {
         } catch (EncryptedDocumentException error) {
             throw new PptExtractionException("O arquivo PPT está protegido e não pode ser processado.", error);
         } catch (OfficeXmlFileException error) {
-            throw new PptExtractionException("O arquivo enviado não é um PowerPoint binário .ppt.", error);
+            throw new PptExtractionException("O arquivo enviado não é um PowerPoint binário .ppt/.pps.", error);
         } catch (IOException | RuntimeException error) {
             throw new PptExtractionException("O arquivo PPT é inválido, corrompido ou não suportado.", error);
         }
