@@ -6,6 +6,7 @@ import com.estudenoah.app.domain.HistoryEntry
 import com.estudenoah.app.domain.PreparedActivity
 import com.estudenoah.app.domain.Question
 import com.estudenoah.app.domain.Subject
+import com.estudenoah.app.domain.StudentAnswerRecord
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -150,7 +151,19 @@ internal class LocalPreferencesRepository(context: Context) {
                             subject = item.getString("subject"),
                             score = item.getInt("score"),
                             total = item.getInt("total"),
-                            timestamp = item.getLong("timestamp")
+                            timestamp = item.getLong("timestamp"),
+                            answers = item.optJSONArray("answers")?.let { answers ->
+                                buildList {
+                                    for (j in 0 until answers.length()) {
+                                        val answer = answers.getJSONObject(j)
+                                        add(StudentAnswerRecord(
+                                            questionId = answer.optString("questionId", ""),
+                                            answer = answer.optString("answer", ""),
+                                            correct = if (answer.has("correct") && !answer.isNull("correct")) answer.getBoolean("correct") else null
+                                        ))
+                                    }
+                                }
+                            }.orEmpty()
                         )
                     )
                 }
@@ -169,6 +182,11 @@ internal class LocalPreferencesRepository(context: Context) {
                     .put("score", it.score)
                     .put("total", it.total)
                     .put("timestamp", it.timestamp)
+                    .put("answers", JSONArray().apply {
+                        it.answers.forEach { answer ->
+                            put(JSONObject().put("questionId", answer.questionId).put("answer", answer.answer).put("correct", answer.correct))
+                        }
+                    })
             )
         }
         preferences.edit()
@@ -192,6 +210,8 @@ internal class LocalPreferencesRepository(context: Context) {
                     .put("options", JSONArray(question.options))
                     .put("correctIndex", question.correctIndex)
                     .put("explanation", question.explanation)
+                    .put("mathAnswer", question.mathAnswer)
+                    .put("solutionSteps", JSONArray(question.solutionSteps))
             )
         }
         return array.toString()
@@ -214,7 +234,11 @@ internal class LocalPreferencesRepository(context: Context) {
                         prompt = item.getString("prompt"),
                         options = options,
                         correctIndex = item.getInt("correctIndex"),
-                        explanation = item.optString("explanation", "")
+                        explanation = item.optString("explanation", ""),
+                        mathAnswer = item.optString("mathAnswer", "").ifBlank { null },
+                        solutionSteps = item.optJSONArray("solutionSteps")?.let { steps ->
+                            buildList { for (j in 0 until steps.length()) add(steps.getString(j)) }
+                        }.orEmpty()
                     )
                 )
             }
