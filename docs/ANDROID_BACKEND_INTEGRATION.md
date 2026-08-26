@@ -9,7 +9,7 @@ O APK não contém chave Gemini, service account, segredo Firebase Admin ou toke
 ## Rotas e materiais
 
 - PDF, PPTX, DOC, DOCX, ODT, texto digitado e voz reconhecida: extração/texto no Android e `POST /v1/activities/from-text` com `sourceType`, `sourceTitle`, `subject`, `grade` e `text`.
-- PPT 97–2003: upload multipart para `POST /v1/activities/from-ppt`, campos `file`, `subject` e `grade`; extração HSLF ocorre no backend.
+- PPT/PPS 97–2003: upload multipart para `POST /v1/activities/from-ppt`, campos `file`, `subject` e `grade`; extração HSLF ocorre no backend. PPSX permanece fora deste fluxo.
 - YouTube manual: `POST /v1/materials/youtube/analyze` com `url`, seguido de `POST /v1/activities/generate` com a análise integral e a fonte YouTube.
 - MP3, MP4 e AVI: continuam sem transcrição; nenhum byte é tratado como texto e nenhuma atividade mecânica é criada.
 
@@ -38,7 +38,7 @@ Se o backend falhar, o aplicativo não chama silenciosamente `MaterialQuestionGe
 1. Instale o APK debug normal por cima da versão atual.
 2. Na Área dos Pais, abra **Conta do backend** e entre com a conta criada pelo responsável.
 3. Confirme internet e abra a criação manual.
-4. Teste texto, um documento extraído, um `.ppt` isolado e uma URL YouTube.
+4. Teste texto, um documento extraído, um `.ppt` ou `.pps` isolado e uma URL YouTube.
 5. Confirme atividade preparada, execução, resultado e histórico.
 6. Simule ausência de rede e confirme que nenhuma atividade local falsa é criada.
 
