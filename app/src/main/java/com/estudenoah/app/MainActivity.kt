@@ -1601,7 +1601,7 @@ private fun MaterialInputScreen(
             }
             if (legacyPpts.isNotEmpty()) {
                 if (selected.size != 1) {
-                    error = "Para analisar PowerPoint antigo, selecione apenas um arquivo .ppt por vez."
+                    error = "Para analisar PowerPoint antigo, selecione apenas um arquivo .ppt ou .pps por vez."
                     importingFiles = false
                     return@launch
                 }
@@ -1708,7 +1708,7 @@ private fun MaterialInputScreen(
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "Formatos aceitos: PDF, PPT, PPTX, DOC, DOCX, ODT, MP3, MP4 e AVI. Você pode selecionar mais de um arquivo.",
+                "Formatos aceitos: PDF, PPT, PPS, PPTX, DOC, DOCX, ODT, MP3, MP4 e AVI. Você pode selecionar mais de um arquivo.",
                 color = Muted,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center
