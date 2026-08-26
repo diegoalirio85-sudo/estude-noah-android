@@ -13,8 +13,12 @@ internal data class Question(
     val prompt: String,
     val options: List<String>,
     val correctIndex: Int,
-    val explanation: String
-)
+    val explanation: String,
+    val mathAnswer: String? = null,
+    val solutionSteps: List<String> = emptyList()
+) {
+    val isMathProblem: Boolean get() = mathAnswer != null
+}
 
 internal data class CustomQuestion(
     val id: String,
@@ -31,7 +35,14 @@ internal data class HistoryEntry(
     val subject: String,
     val score: Int,
     val total: Int,
-    val timestamp: Long
+    val timestamp: Long,
+    val answers: List<StudentAnswerRecord> = emptyList()
+)
+
+internal data class StudentAnswerRecord(
+    val questionId: String,
+    val answer: String,
+    val correct: Boolean?
 )
 
 internal data class PreparedActivity(
