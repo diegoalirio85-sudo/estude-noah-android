@@ -13,7 +13,7 @@ internal object MaterialRouting {
 
     fun route(displayName: String, mimeType: String?): MaterialRoute {
         return when (extensionOf(displayName)) {
-            "ppt" -> MaterialRoute.LEGACY_PPT_BACKEND
+            "ppt", "pps" -> MaterialRoute.LEGACY_PPT_BACKEND
             "pptx" -> MaterialRoute.LOCAL_EXTRACTION
             "" -> if (mimeType.equals(LEGACY_PPT_MIME, ignoreCase = true)) {
                 MaterialRoute.LEGACY_PPT_BACKEND
