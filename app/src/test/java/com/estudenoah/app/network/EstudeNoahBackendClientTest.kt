@@ -26,7 +26,7 @@ class EstudeNoahBackendClientTest {
     @Test fun odtSourceTypeIsPreserved() = sourceType("odt")
     @Test fun trueFalseResponseMaps() { val q=BackendActivityMapper.questions(parse(okVf())); assertEquals(listOf("Verdadeiro","Falso"),q.single().options); assertEquals(0,q.single().correctIndex) }
     @Test fun falseAnswerMapsToSecondOption() { val q=BackendActivityMapper.questions(parse(okVf(answer=false))); assertEquals(1,q.single().correctIndex) }
-    @Test fun mathResponseMapsWithoutInventingDistractors() { val q=BackendActivityMapper.questions(parse(okMath())); assertEquals(listOf("Mostrar resposta"),q.single().options); assertTrue(q.single().explanation.contains("Resposta: 42")); assertTrue(q.single().explanation.contains("6 × 7")) }
+    @Test fun mathResponseMapsStructuredAnswerWithoutInventingDistractors() { val q=BackendActivityMapper.questions(parse(okMath())).single(); assertTrue(q.options.isEmpty()); assertEquals("42",q.mathAnswer); assertEquals(listOf("6 × 7 = 42"),q.solutionSteps); assertEquals("Multiplique.",q.explanation); assertTrue(q.isMathProblem) }
     @Test fun backendSubjectMapsToAndroid() { assertEquals(Subject.MATEMATICA, BackendActivityMapper.subject("Matemática")); assertEquals(Subject.CIENCIAS, BackendActivityMapper.subject("Ciências")) }
     @Test fun error413Maps() = statusMessage(413,"O material é grande demais para ser analisado.")
     @Test fun error422Maps() = statusMessage(422,"Não foi possível obter conteúdo suficiente deste material.")
