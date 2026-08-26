@@ -142,6 +142,16 @@ class BackendApiTest {
     }
 
     @Test
+    void generatesActivityFromValidLegacyPps() throws Exception {
+        String text = "conteúdo pedagógico ".repeat(12);
+        when(extractor.extract(any(), any())).thenReturn(new PptExtractionResult("aula.pps", 1, text, List.of(), true));
+        when(documentAnalysisProvider.analyze(any())).thenReturn(documentAnalysis("pps"));
+        var upload = new MockMultipartFile("file", "AULA.PPS", "application/octet-stream", new byte[]{1, 2});
+        mockMvc.perform(multipart("/v1/activities/from-ppt").file(upload).param("subject", "Ciências").param("grade", "4º Ano"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void rejectsPptWithoutUsableText() throws Exception {
         when(extractor.extract(any(), any())).thenReturn(new PptExtractionResult("vazio.ppt", 1, "Slide 1", List.of(), false));
         var upload = new MockMultipartFile("file", "vazio.ppt", "application/vnd.ms-powerpoint", new byte[]{1});
