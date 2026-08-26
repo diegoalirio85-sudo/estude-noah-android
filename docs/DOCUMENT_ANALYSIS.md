@@ -8,7 +8,7 @@ Documentos cujo texto já é extraído com segurança no Android seguem:
 
 O PowerPoint binário legado é a exceção:
 
-`.ppt → upload efêmero → LegacyPptExtractor/HSLF → texto → análise pedagógica → C2.1 → atividade`
+`.ppt/.pps → upload efêmero → LegacyPptExtractor/HSLF → texto → análise pedagógica → C2.1 → atividade`
 
 A D1A não conecta o Android. Essa integração pertence à D1B.
 
@@ -26,7 +26,7 @@ Recebe o mesmo JSON, executa a análise documental e delega a geração ao servi
 
 ### `POST /v1/activities/from-ppt`
 
-Recebe multipart com `file`, `subject` e `grade`. O arquivo precisa terminar em `.ppt`. O endpoint reutiliza `LegacyPptExtractor`; PPT inválido, corrompido, protegido ou sem texto suficiente falha de forma controlada.
+Recebe multipart com `file`, `subject` e `grade`. O arquivo precisa terminar em `.ppt` ou `.pps`; `.ppsx` não é aceito pelo HSLF. O endpoint reutiliza `LegacyPptExtractor`; PPT inválido, corrompido, protegido ou sem texto suficiente falha de forma controlada.
 
 ## Fidelidade e Structured Output
 
