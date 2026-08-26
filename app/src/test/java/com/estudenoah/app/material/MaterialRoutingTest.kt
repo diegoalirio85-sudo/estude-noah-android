@@ -35,6 +35,34 @@ class MaterialRoutingTest {
         assertEquals(MaterialRoute.LEGACY_PPT_BACKEND, MaterialRouting.route("material", "application/vnd.ms-powerpoint"))
     }
 
+    @Test fun supportedLocalDocumentsGoDirectlyToTextPipeline() {
+        listOf("aula.pdf", "aula.pptx", "aula.doc", "aula.docx", "aula.odt").forEach { name ->
+            var textPipelineCalled = false
+            MaterialRouting.dispatch(
+                displayName = name,
+                mimeType = "application/octet-stream",
+                legacyPpt = { error("Legacy endpoint must not be used for $name") },
+                localExtraction = { textPipelineCalled = true }
+            )
+            assertTrue("Text pipeline was not started for $name", textPipelineCalled)
+        }
+    }
+
+    @Test fun intermediateContentIsNeverPartOfTheUiPolicy() {
+        assertFalse(MaterialRouting.exposesIntermediateContent())
+    }
+
+    @Test fun extractedContentIsNotPersistedWithPreparedActivity() {
+        assertEquals("", MaterialRouting.sourceTextForPersistence(false, "conteúdo extraído privado"))
+        assertEquals("texto digitado", MaterialRouting.sourceTextForPersistence(true, "texto digitado"))
+    }
+
+    @Test fun processingFailureMessageIsFriendlyAndDoesNotExposeTechnicalContent() {
+        assertTrue(MaterialRouting.FRIENDLY_PROCESSING_FAILURE.contains("Não foi possível processar"))
+        assertFalse(MaterialRouting.FRIENDLY_PROCESSING_FAILURE.contains("extractedText"))
+        assertFalse(MaterialRouting.FRIENDLY_PROCESSING_FAILURE.contains("stack", ignoreCase = true))
+    }
+
     private fun assertLegacy(displayName: String, mimeType: String?) {
         var backendCalled = false
         var localCalled = false
