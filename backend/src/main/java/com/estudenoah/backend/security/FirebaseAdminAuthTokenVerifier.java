@@ -6,6 +6,7 @@ import com.google.firebase.FirebaseOptions;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import java.io.IOException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -17,6 +18,7 @@ public final class FirebaseAdminAuthTokenVerifier implements FirebaseAuthTokenVe
     private final String appName;
     private volatile FirebaseAuth auth;
 
+    @Autowired
     public FirebaseAdminAuthTokenVerifier(@Value("${firebase.project-id:}") String projectId) {
         this(projectId, GoogleCredentials::getApplicationDefault, APP_NAME);
     }
