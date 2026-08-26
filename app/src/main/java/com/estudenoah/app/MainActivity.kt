@@ -1517,6 +1517,39 @@ private fun MaterialInputScreen(
     val scope = rememberCoroutineScope()
     val backendRepository = remember { BackendActivityRepository() }
 
+    suspend fun generateActivity(
+        activityTitle: String,
+        internalText: String,
+        internalSourceType: String,
+        pptUri: Uri? = null,
+        pptName: String? = null,
+        preserveSourceInput: Boolean = false
+    ) {
+        generatingActivity = true
+        error = null
+        fileStatus = "Analisando o material e preparando a atividade…"
+        try {
+            val questions = withContext(Dispatchers.IO) {
+                when {
+                    pptUri != null -> backendRepository.fromPpt(context, pptUri, pptName ?: "material.ppt", subject.label)
+                    Regex("^https?://(?:www\\.)?(?:youtube\\.com|youtu\\.be)/", RegexOption.IGNORE_CASE).containsMatchIn(internalText) ->
+                        backendRepository.fromYoutube(internalText, subject.label)
+                    else -> backendRepository.fromText(internalSourceType, activityTitle, subject.label, internalText)
+                }
+            }
+            if (questions.isEmpty()) throw BackendException(code = "incompatible_response", message = "No questions returned.")
+            onGenerate(subject, activityTitle, if (preserveSourceInput) internalText else "", questions)
+        } catch (failure: BackendException) {
+            error = failure.userMessage()
+            fileStatus = null
+        } catch (_: Exception) {
+            error = "Não foi possível preparar a atividade. Tente novamente."
+            fileStatus = null
+        } finally {
+            generatingActivity = false
+        }
+    }
+
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -1528,10 +1561,17 @@ private fun MaterialInputScreen(
                 .orEmpty()
 
             if (spoken.isNotBlank()) {
-                val separator = if (text.isBlank()) "" else "\n\n"
-                text = (text.trimEnd() + separator + spoken).take(25000)
+                text = spoken.take(25000)
+                importedFiles = "Entrada de voz"
                 error = null
                 voiceError = null
+                scope.launch {
+                    generateActivity(
+                        activityTitle = title.trim().ifBlank { "Material de ${subject.label}" },
+                        internalText = text,
+                        internalSourceType = "voice"
+                    )
+                }
             } else {
                 voiceError = "Não consegui reconhecer o que foi falado. Tente novamente."
             }
@@ -1569,18 +1609,25 @@ private fun MaterialInputScreen(
                 if (title.isBlank()) title = legacyPpts.first().second.substringBeforeLast('.').take(80)
                 error = null
                 importingFiles = false
+                generateActivity(
+                    activityTitle = title.ifBlank { legacyPpts.first().second.substringBeforeLast('.').take(80) },
+                    internalText = "",
+                    internalSourceType = "ppt",
+                    pptUri = legacyPpts.first().first,
+                    pptName = legacyPpts.first().second
+                )
                 return@launch
             }
             selectedPptUri = null
             selectedPptName = null
+            text = ""
             val results = withContext(Dispatchers.IO) { selected.map { (uri, _, _) -> MaterialFileExtractor.extract(context, uri) } }
             val usableTexts = results.mapNotNull { result ->
                 result.extractedText.takeIf { it.isNotBlank() }
                     ?.let { "[${result.fileName}]\n$it" }
             }
             if (usableTexts.isNotEmpty()) {
-                val separator = if (text.isBlank()) "" else "\n\n"
-                text = (text.trimEnd() + separator + usableTexts.joinToString("\n\n")).take(25000)
+                text = usableTexts.joinToString("\n\n").take(25000)
                 error = null
                 if (title.isBlank() && results.size == 1) {
                     title = results.first().fileName.substringBeforeLast('.').take(80)
@@ -1588,8 +1635,16 @@ private fun MaterialInputScreen(
             }
             importedFiles = results.joinToString(" • ") { it.fileName }
             sourceType = results.singleOrNull()?.extension?.ifBlank { "text" } ?: "text"
-            fileStatus = results.joinToString("\n") { "• ${it.fileName}: ${it.message}" }
+            fileStatus = if (text.length >= 140) "Analisando o material e preparando a atividade…" else
+                results.joinToString("\n") { "• ${it.fileName}: o formato ainda não forneceu conteúdo suficiente para criar uma atividade." }
             importingFiles = false
+            if (text.length >= 140) {
+                generateActivity(
+                    activityTitle = title.trim().ifBlank { "Material de ${subject.label}" },
+                    internalText = text,
+                    internalSourceType = sourceType
+                )
+            }
         }
     }
 
@@ -1671,19 +1726,21 @@ private fun MaterialInputScreen(
             }
 
             Spacer(Modifier.height(14.dp))
-            OutlinedTextField(
-                value = text,
-                onValueChange = { value ->
-                    text = value.take(25000)
-                    error = null
-                    voiceError = null
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Texto extraído / material") },
-                minLines = 12,
-                supportingText = { Text("${text.length}/25.000 caracteres") },
-                isError = error != null
-            )
+            if (importedFiles.isBlank()) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { value ->
+                        text = value.take(25000)
+                        error = null
+                        voiceError = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Cole um texto ou uma URL do YouTube") },
+                    minLines = 8,
+                    supportingText = { Text("${text.length}/25.000 caracteres") },
+                    isError = error != null
+                )
+            }
 
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
@@ -1701,7 +1758,7 @@ private fun MaterialInputScreen(
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(18.dp)
             ) {
-                Text("🗑️ Apagar material extraído", fontWeight = FontWeight.Bold)
+                Text("🗑️ Remover material selecionado", fontWeight = FontWeight.Bold)
             }
 
             Spacer(Modifier.height(10.dp))
@@ -1719,6 +1776,7 @@ private fun MaterialInputScreen(
                         voiceError = "Este tablet não encontrou um serviço de reconhecimento de voz disponível."
                     }
                 },
+                enabled = importedFiles.isBlank(),
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(18.dp)
             ) {
@@ -1726,7 +1784,7 @@ private fun MaterialInputScreen(
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "PDF, DOC, DOCX, PPTX e ODT usam o texto extraído no tablet. PowerPoint antigo (.ppt) é analisado pelo servidor. MP3/MP4/AVI ainda não possuem transcrição automática.",
+                "A extração, transcrição, OCR e análise são etapas internas. O aplicativo mostra somente o material selecionado e a atividade pronta.",
                 color = Muted,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center
@@ -1758,28 +1816,15 @@ private fun MaterialInputScreen(
                 onClick = {
                     val cleanText = text.trim()
                     val cleanTitle = title.trim().ifBlank { "Material de ${subject.label}" }
-                    generatingActivity = true
-                    error = null
                     scope.launch {
-                        try {
-                            val questions = withContext(Dispatchers.IO) {
-                                val pptUri = selectedPptUri?.let(Uri::parse)
-                                when {
-                                    pptUri != null -> backendRepository.fromPpt(context, pptUri, selectedPptName ?: "material.ppt", subject.label)
-                                    Regex("^https?://(?:www\\.)?(?:youtube\\.com|youtu\\.be)/", RegexOption.IGNORE_CASE).containsMatchIn(cleanText) ->
-                                        backendRepository.fromYoutube(cleanText, subject.label)
-                                    else -> backendRepository.fromText(sourceType, cleanTitle, subject.label, cleanText)
-                                }
-                            }
-                            if (questions.isEmpty()) throw BackendException(code = "incompatible_response", message = "No questions returned.")
-                            onGenerate(subject, cleanTitle, cleanText, questions)
-                        } catch (failure: BackendException) {
-                            error = failure.userMessage()
-                        } catch (_: Exception) {
-                            error = "Não foi possível preparar a atividade. Tente novamente."
-                        } finally {
-                            generatingActivity = false
-                        }
+                        generateActivity(
+                            activityTitle = cleanTitle,
+                            internalText = cleanText,
+                            internalSourceType = sourceType,
+                            pptUri = selectedPptUri?.let(Uri::parse),
+                            pptName = selectedPptName,
+                            preserveSourceInput = importedFiles.isBlank()
+                        )
                     }
                 },
                 enabled = !generatingActivity && !importingFiles && (selectedPptUri != null || text.trim().length >= 140 || Regex("^https?://(?:www\\.)?(?:youtube\\.com|youtu\\.be)/", RegexOption.IGNORE_CASE).containsMatchIn(text.trim())),
