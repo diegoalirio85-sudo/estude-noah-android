@@ -20,9 +20,11 @@ internal object BackendActivityMapper {
                 Question(
                     id = UUID.randomUUID().toString(),
                     prompt = item.problem ?: throw BackendException(code = "incompatible_response", message = "Math problem missing."),
-                    options = listOf("Mostrar resposta"),
+                    options = emptyList(),
                     correctIndex = 0,
-                    explanation = (listOf("Resposta: $answer") + item.solutionSteps + item.explanation).filter { it.isNotBlank() }.joinToString("\n")
+                    explanation = item.explanation,
+                    mathAnswer = answer,
+                    solutionSteps = item.solutionSteps
                 )
             } else {
                 val answer = item.answer ?: throw BackendException(code = "incompatible_response", message = "True/false answer missing.")
