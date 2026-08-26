@@ -40,12 +40,12 @@ docker run --rm -e PORT=8080 -p 8080:8080 estude-noah-backend
 
 Não depende de Gemini, arquivos ou serviços externos.
 
-### PowerPoint legado
+### PowerPoint legado (PPT/PPS)
 
 `POST /v1/materials/ppt/extract`, com `multipart/form-data` e campo `file`.
 
 ```bash
-curl -F "file=@material.ppt;type=application/vnd.ms-powerpoint" \
+curl -F "file=@material.pps;type=application/vnd.ms-powerpoint" \
   http://localhost:8080/v1/materials/ppt/extract
 ```
 
@@ -55,7 +55,7 @@ Erros:
 
 - `400`: upload ausente, vazio ou ilegível;
 - `413`: limite configurado excedido;
-- `415`: extensão diferente de `.ppt`;
+- `415`: extensão diferente de `.ppt` ou `.pps`;
 - `422`: PPT inválido, corrompido, protegido ou não suportado;
 - `500`: falha inesperada, sem stack trace na resposta.
 
@@ -132,7 +132,7 @@ Consulte `docs/YOUTUBE_ANALYSIS.md` para contrato, segurança, privacidade, test
 
 `POST /v1/materials/text/analyze` recebe texto extraído de PDF, PPT, PPTX, DOC, DOCX, ODT ou texto simples e produz análise pedagógica estruturada, sem gerar questões. `POST /v1/activities/from-text` encadeia essa análise ao C2.1 existente.
 
-`POST /v1/activities/from-ppt` recebe o arquivo `.ppt`, `subject` e `grade` em multipart, reutiliza o `LegacyPptExtractor` HSLF e envia o texto resultante pelo mesmo pipeline. Nenhuma extração Apache POI foi duplicada.
+`POST /v1/activities/from-ppt` recebe o arquivo `.ppt` ou `.pps`, `subject` e `grade` em multipart, reutiliza o `LegacyPptExtractor` HSLF e envia o texto resultante pelo mesmo pipeline. Nenhuma extração Apache POI foi duplicada.
 
 O texto aceito possui entre 140 e 60.000 caracteres úteis. Acima desse limite a API retorna erro controlado; não há truncamento silencioso. O serviço não persiste uploads, texto, análise ou atividade e não registra o conteúdo escolar integral. Consulte `docs/DOCUMENT_ANALYSIS.md`.
 
