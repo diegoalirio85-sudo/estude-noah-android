@@ -1546,9 +1546,14 @@ private fun MaterialInputScreen(
         fileStatus = "Lendo ${uris.size} arquivo(s)..."
         scope.launch {
             val selected = withContext(Dispatchers.IO) {
-                uris.take(8).map { uri -> uri to MaterialFileExtractor.displayName(context, uri) }
+                uris.take(8).map { uri ->
+                    Triple(uri, MaterialFileExtractor.displayName(context, uri), context.contentResolver.getType(uri))
+                }
             }
-            val legacyPpts = selected.filter { (_, name) -> name.substringAfterLast('.', "").equals("ppt", ignoreCase = true) }
+            val legacyPpts = selected.filter { (_, name, mimeType) ->
+                com.estudenoah.app.material.MaterialRouting.route(name, mimeType) ==
+                    com.estudenoah.app.material.MaterialRoute.LEGACY_PPT_BACKEND
+            }
             if (legacyPpts.isNotEmpty()) {
                 if (selected.size != 1) {
                     error = "Para analisar PowerPoint antigo, selecione apenas um arquivo .ppt por vez."
@@ -1568,7 +1573,7 @@ private fun MaterialInputScreen(
             }
             selectedPptUri = null
             selectedPptName = null
-            val results = withContext(Dispatchers.IO) { selected.map { (uri, _) -> MaterialFileExtractor.extract(context, uri) } }
+            val results = withContext(Dispatchers.IO) { selected.map { (uri, _, _) -> MaterialFileExtractor.extract(context, uri) } }
             val usableTexts = results.mapNotNull { result ->
                 result.extractedText.takeIf { it.isNotBlank() }
                     ?.let { "[${result.fileName}]\n$it" }
