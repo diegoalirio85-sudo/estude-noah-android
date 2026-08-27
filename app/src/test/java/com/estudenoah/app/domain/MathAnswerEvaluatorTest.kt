@@ -12,8 +12,12 @@ class MathAnswerEvaluatorTest {
     @Test fun wrongIntegerIsRecognized() { assertEquals(false, MathAnswerEvaluator.evaluate("23", "24")) }
     @Test fun numericFormattingIsEquivalent() { assertEquals(true, MathAnswerEvaluator.evaluate(" 24 ", "24")) }
     @Test fun commaAndPointDecimalsAreEquivalent() { assertEquals(true, MathAnswerEvaluator.evaluate("24,50", "24.5")) }
-    @Test fun monetaryAndSimpleUnitAnswersAreAcceptedNumerically() { assertEquals(true, MathAnswerEvaluator.evaluate("R$ 24,50", "24.5 reais")) }
+    @Test fun monetaryAliasesAreEquivalent() { assertEquals(true, MathAnswerEvaluator.evaluate("R$ 24,50", "24.5 reais")) }
+    @Test fun omittedUnitIsAcceptedWhenExpectedHasSimpleUnit() { assertEquals(true, MathAnswerEvaluator.evaluate("3", "3 lápis")) }
+    @Test fun matchingExplicitUnitIsAccepted() { assertEquals(true, MathAnswerEvaluator.evaluate("3 lápis", "3 lápis")) }
+    @Test fun contradictoryExplicitUnitIsRejected() { assertEquals(false, MathAnswerEvaluator.evaluate("3 borrachas", "3 lápis")) }
     @Test fun verifiedDivisionEquationIsEquivalentToExpectedUnitAnswer() { assertEquals(true, MathAnswerEvaluator.evaluate("12:4=3", "3 lápis")) }
+    @Test fun verifiedDivisionEquationRejectsContradictoryUnit() { assertEquals(false, MathAnswerEvaluator.evaluate("12:4=3 borrachas", "3 lápis")) }
     @Test fun verifiedDivisionExpressionIsEquivalentToExpectedUnitAnswer() { assertEquals(true, MathAnswerEvaluator.evaluate("12÷4", "3 lápis")); assertEquals(true, MathAnswerEvaluator.evaluate("12/4=3", "3 lápis")) }
     @Test fun incorrectEquationResultIsRejected() { assertEquals(false, MathAnswerEvaluator.evaluate("12:4=4", "3 lápis")) }
     @Test fun arithmeticResultDifferentFromExpectedIsRejected() { assertEquals(false, MathAnswerEvaluator.evaluate("12:3=4", "3 lápis")) }
