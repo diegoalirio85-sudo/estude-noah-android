@@ -48,8 +48,36 @@ internal data class HistoryEntry(
 internal data class StudentAnswerRecord(
     val questionId: String,
     val answer: String,
-    val correct: Boolean?
-)
+    val correct: Boolean?,
+    val prompt: String = "",
+    val correctAnswer: String = "",
+    val explanation: String = ""
+) {
+    companion object {
+        fun fromChoice(question: Question, optionIndex: Int): StudentAnswerRecord {
+            val selectedAnswer = question.options.getOrNull(optionIndex).orEmpty()
+            val expectedAnswer = question.options.getOrNull(question.correctIndex).orEmpty()
+            return StudentAnswerRecord(
+                questionId = question.id,
+                answer = selectedAnswer,
+                correct = optionIndex == question.correctIndex,
+                prompt = question.prompt,
+                correctAnswer = expectedAnswer,
+                explanation = question.explanation
+            )
+        }
+
+        fun fromMath(question: Question, answer: String, correct: Boolean?): StudentAnswerRecord =
+            StudentAnswerRecord(
+                questionId = question.id,
+                answer = answer.trim(),
+                correct = correct,
+                prompt = question.prompt,
+                correctAnswer = question.mathAnswer.orEmpty(),
+                explanation = question.explanation
+            )
+    }
+}
 
 internal data class PreparedActivity(
     val id: String,
