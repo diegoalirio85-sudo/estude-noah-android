@@ -1,0 +1,40 @@
+name: Apply history answer details
+
+on:
+  push:
+    branches:
+      - feat/history-answer-details
+    paths:
+      - .github/workflows/apply-history-answer-details.yml
+      - scripts/apply_history_answer_details.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[history-patch]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v5
+        with:
+          ref: feat/history-answer-details
+          fetch-depth: 0
+
+      - name: Apply exact source transformations
+        run: python3 scripts/apply_history_answer_details.py
+
+      - name: Remove one-off patch machinery
+        run: |
+          rm -f scripts/apply_history_answer_details.py
+          rm -f .github/workflows/apply-history-answer-details.yml
+
+      - name: Commit transformed sources
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: persist and show history answer details [history-patch]"
+          git push origin HEAD:feat/history-answer-details
