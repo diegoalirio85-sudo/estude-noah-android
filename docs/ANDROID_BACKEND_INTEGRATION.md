@@ -2,14 +2,14 @@
 
 ## Arquitetura
 
-O fluxo é `Android → Firebase App Check → Cloud Run → análise pedagógica → C2.1 → atividade`. A URL padrão é `https://estude-noah-backend-rgwyoc2iwa-rj.a.run.app`, centralizada em `BuildConfig.ESTUDE_NOAH_BACKEND_BASE_URL`. Builds de teste podem sobrescrevê-la pela propriedade Gradle ou variável de ambiente `ESTUDE_NOAH_BACKEND_BASE_URL`.
+O fluxo privado atual é `Android → Firebase Authentication → ID token → Cloud Run → análise pedagógica → C2.1 → atividade`. A URL padrão é `https://estude-noah-backend-rgwyoc2iwa-rj.a.run.app`, centralizada em `BuildConfig.ESTUDE_NOAH_BACKEND_BASE_URL`. Builds de teste podem sobrescrevê-la pela propriedade Gradle ou variável de ambiente `ESTUDE_NOAH_BACKEND_BASE_URL`.
 
 O APK não contém chave Gemini, service account, segredo Firebase Admin ou token fixo.
 
 ## Rotas e materiais
 
 - PDF, PPTX, DOC, DOCX, ODT, texto digitado e voz reconhecida: extração/texto no Android e `POST /v1/activities/from-text` com `sourceType`, `sourceTitle`, `subject`, `grade` e `text`.
-- PPT/PPS 97–2003: upload multipart para `POST /v1/activities/from-ppt`, campos `file`, `subject` e `grade`; extração HSLF ocorre no backend. PPSX permanece fora deste fluxo.
+- PPT/PPS 97–2003: upload multipart para `POST /v1/activities/from-ppt`, campos `file`, `subject` e `grade`; extração HSLF ocorre no backend. A extensão do `DISPLAY_NAME` prevalece sobre MIME ambíguo; quando o provedor oferece apenas o MIME legado e nenhum sufixo, o cliente usa um filename técnico `.ppt` no multipart sem alterar os bytes originais. PPSX permanece fora deste fluxo.
 - YouTube manual: `POST /v1/materials/youtube/analyze` com `url`, seguido de `POST /v1/activities/generate` com a análise integral e a fonte YouTube.
 - MP3, MP4 e AVI: continuam sem transcrição; nenhum byte é tratado como texto e nenhuma atividade mecânica é criada.
 
@@ -25,7 +25,7 @@ App Check permanece no código como modo futuro `BACKEND_AUTH_MODE=app_check`, m
 
 ## Mapeamento e Matemática
 
-`BackendActivityMapper` converte `GeneratedActivity` para `Question`, que permanece compatível com `PreparedActivity`, histórico e SharedPreferences existentes. `TRUE_FALSE` usa as opções Verdadeiro/Falso. `MATH_PROBLEMS` preserva problema, resposta e passos de solução, sem inventar alternativas ou converter a questão para V/F.
+`BackendActivityMapper` converte `GeneratedActivity` para `Question`, que permanece compatível com `PreparedActivity`, histórico e SharedPreferences existentes. `TRUE_FALSE` usa as opções Verdadeiro/Falso. `MATH_PROBLEMS` preserva problema, resposta e passos de solução, sem inventar alternativas ou converter a questão para V/F. Tipos de atividade desconhecidos são rejeitados como resposta incompatível.
 
 ## Falhas
 
@@ -43,4 +43,3 @@ Se o backend falhar, o aplicativo não chama silenciosamente `MaterialQuestionGe
 6. Simule ausência de rede e confirme que nenhuma atividade local falsa é criada.
 
 CI usa transportes e tokens falsos; não chama Cloud Run, Firebase ou Gemini reais.
-
