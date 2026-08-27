@@ -62,6 +62,16 @@ class FirebaseAppCheckFilterTest {
     }
 
     @Test
+    void appCheckModeWithEnforcementDisabledFailsClosed() throws Exception {
+        AppCheckTokenVerifier fake = token -> new AppCheckTokenVerifier.VerifiedApp("fake-android-app");
+        MockMvc disabled = MockMvcBuilders.standaloneSetup(new TestController())
+                .addFilters(new FirebaseAppCheckFilter(fake, false, "app_check", 30)).build();
+        disabled.perform(post("/v1/activities/generate"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("app_check_disabled"));
+    }
+
+    @Test
     void rateLimiterRejectsRequestsBeyondConfiguredWindow() throws Exception {
         AppCheckTokenVerifier fake = token -> new AppCheckTokenVerifier.VerifiedApp("fake-android-app");
         MockMvc limited = MockMvcBuilders.standaloneSetup(new TestController())
@@ -87,4 +97,3 @@ class FirebaseAppCheckFilterTest {
         }
     }
 }
-
