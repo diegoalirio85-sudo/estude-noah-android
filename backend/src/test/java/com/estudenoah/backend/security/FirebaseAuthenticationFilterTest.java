@@ -26,15 +26,42 @@ class FirebaseAuthenticationFilterTest {
     @Test void allowedUidProceeds() throws Exception { mvc("allowed-uid").perform(post("/v1/activities/generate").header("Authorization", "Bearer allowed-token")).andExpect(status().isOk()).andExpect(content().string("processed")); }
     @Test void unauthorizedUidIs403() throws Exception { mvc("allowed-uid").perform(post("/v1/activities/generate").header("Authorization", "Bearer denied-token")).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("firebase_uid_not_allowed")); }
     @Test void emptyAllowlistFailsClosed() throws Exception { mvc("").perform(post("/v1/activities/generate").header("Authorization", "Bearer allowed-token")).andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("firebase_uid_allowlist_empty")); }
+
     @Test void missingProjectConfigurationFailsSafely() throws Exception {
         FirebaseAuthTokenVerifier misconfigured = token -> { throw new FirebaseAuthConfigurationException("missing project"); };
-        MockMvc configured = MockMvcBuilders.standaloneSetup(new TestController()).addFilters(new FirebaseAuthenticationFilter(misconfigured, "allowed-uid", "firebase_auth", 30)).build();
+        MockMvc configured = MockMvcBuilders.standaloneSetup(new TestController())
+                .addFilters(new FirebaseAuthenticationFilter(misconfigured, "allowed-uid", "firebase_auth", false, 30)).build();
         configured.perform(post("/v1/activities/generate").header("Authorization", "Bearer token"))
                 .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("firebase_auth_configuration_invalid"));
     }
 
+    @Test void unknownAuthModeFailsClosed() throws Exception {
+        MockMvc configured = configured("typo_mode", false);
+        configured.perform(post("/v1/activities/generate"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("backend_auth_mode_invalid"));
+    }
+
+    @Test void noneModeFailsClosedUnlessExplicitlyAllowed() throws Exception {
+        configured("none", false).perform(post("/v1/activities/generate"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("backend_auth_mode_invalid"));
+    }
+
+    @Test void noneModeCanBeExplicitlyEnabledForIsolatedTests() throws Exception {
+        configured("none", true).perform(post("/v1/activities/generate"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("processed"));
+    }
+
     private MockMvc mvc(String allowlist) {
-        return MockMvcBuilders.standaloneSetup(new TestController()).addFilters(new FirebaseAuthenticationFilter(verifier, allowlist, "firebase_auth", 30)).build();
+        return MockMvcBuilders.standaloneSetup(new TestController())
+                .addFilters(new FirebaseAuthenticationFilter(verifier, allowlist, "firebase_auth", false, 30)).build();
+    }
+
+    private MockMvc configured(String mode, boolean allowNone) {
+        return MockMvcBuilders.standaloneSetup(new TestController())
+                .addFilters(new FirebaseAuthenticationFilter(verifier, "allowed-uid", mode, allowNone, 30)).build();
     }
 
     @RestController static final class TestController {
@@ -42,4 +69,3 @@ class FirebaseAuthenticationFilterTest {
         @PostMapping("/v1/activities/generate") String protectedEndpoint() { return "processed"; }
     }
 }
-
