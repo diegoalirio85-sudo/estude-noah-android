@@ -2,7 +2,7 @@
 
 ## Escopo C1
 
-O backend analisa vídeos **públicos** do YouTube com Gemini, considerando fala e elementos visuais. A saída é uma análise didática estruturada que poderá alimentar etapas futuras do motor pedagógico. C1 não gera atividades, não integra AVA, não automatiza sites escolares e não implementa análise de URLs genéricas.
+O backend analisa vídeos **públicos** do YouTube com Gemini, considerando fala e elementos visuais. A saída é uma análise didática estruturada que alimenta o motor pedagógico. C1 não integra AVA, não automatiza sites escolares e não implementa análise de URLs genéricas.
 
 ## Fluxo
 
@@ -13,6 +13,7 @@ O backend analisa vídeos **públicos** do YouTube com Gemini, considerando fala
 5. Gemini processa áudio e vídeo e responde conforme JSON Schema.
 6. O backend aplica ao resultado o tipo e a URL canônica já validados no servidor, sem depender de o modelo repetir metadados de entrada.
 7. O backend valida novamente o contrato e devolve somente o modelo público.
+8. No fluxo Android D1B1, essa análise estruturada é enviada internamente ao endpoint de geração de atividade, sem exibir o conteúdo intermediário.
 
 Não existe download, transcodificação, extração de áudio, arquivo temporário, cache ou persistência do vídeo ou da análise. A interação é enviada com `store=false`.
 
@@ -29,9 +30,9 @@ Rejeitados antes do provedor: HTTP, outros esquemas, IPs, localhost, portas expl
 
 ## Configuração e segredo
 
-Defina `GEMINI_API_KEY` somente no ambiente seguro do backend (em produção, Secret Manager). `GEMINI_MODEL` seleciona o modelo; o padrão documentado é `gemini-3.6-flash`. O ambiente sempre prevalece.
+Defina `GEMINI_API_KEY` somente no ambiente seguro do backend (em produção, Secret Manager). `GEMINI_MODEL` seleciona o modelo e o ambiente sempre prevalece.
 
-O CI não precisa nem recebe chave Gemini: todos os testes usam cliente simulado. Um teste real futuro deverá ser opt-in, desativado por padrão, usar segredo efêmero e vídeo público não privado.
+O CI não precisa nem recebe chave Gemini: os testes automatizados usam cliente simulado. Testes E2E reais devem ser opt-in, usar segredo protegido e vídeo público não privado.
 
 ## Contrato pedagógico
 
@@ -43,19 +44,19 @@ O CI não precisa nem recebe chave Gemini: todos os testes usam cliente simulado
 - pede avisos de ambiguidade;
 - exige evidências com timestamps;
 - identifica matéria, resumo, temas, objetivos, conceitos, relações e equívocos plausíveis;
-- proíbe perguntas e atividades nesta fase.
+- proíbe perguntas e atividades nesta fase de análise.
 
 Structured Output restringe a forma do JSON. O backend ainda faz validação semântica mínima, pois schema sintático não garante fidelidade factual.
 
 ## Falhas e resiliência
 
-O timeout total por tentativa é de três minutos. Há no máximo uma nova tentativa para `429`, `500`, `502`, `503` e `504`; erros de entrada e autenticação não são repetidos. As categorias públicas são estáveis e não reproduzem mensagens internas do Gemini.
+Há timeout controlado e repetição limitada apenas para falhas transitórias do provedor; erros de entrada e autenticação não são repetidos. As categorias públicas são estáveis e não reproduzem mensagens internas do Gemini.
 
-Vídeos privados, não listados ou inacessíveis não são suportados pela entrada direta do YouTube no Gemini. A disponibilidade desse recurso, seus limites e preços ainda podem mudar por estar em preview.
+Vídeos privados, não listados ou inacessíveis não são suportados pela entrada direta do YouTube no Gemini. A disponibilidade, os limites e preços do recurso externo podem mudar.
 
-## Privacidade e retenção
+## Privacidade, autenticação e retenção
 
-O backend não armazena URL, resposta ou conteúdo em banco, disco ou cache. Logs não devem registrar chave, corpo pedagógico ou resposta integral do provedor. Em uma fase futura, autenticação, rate limiting, auditoria sem conteúdo e política de retenção devem anteceder exposição pública.
+O backend não armazena URL, resposta ou conteúdo em banco, disco ou cache. Logs não registram chave, corpo pedagógico ou resposta integral do provedor. No modo privado atual, o endpoint é protegido por Firebase Authentication, allowlist de UID e rate limiting antes da chamada ao controller e ao Gemini. App Check permanece apenas como modo alternativo futuro do backend.
 
 Para diagnóstico manual, `GEMINI_DIAGNOSTIC_FILE` pode apontar para um arquivo temporário. Em falhas do provedor ou de parsing, o backend grava somente metadados sanitizados: status HTTP, modelo, request id, campos superiores, estado da interação, contagem e tamanho dos blocos de texto e código interno da falha. O corpo pedagógico, headers e a API key nunca são gravados. A variável fica desabilitada por padrão e é usada pelo workflow E2E para publicar `gemini-diagnostic.json` apenas quando o arquivo existir.
 
@@ -65,4 +66,4 @@ Para diagnóstico manual, `GEMINI_DIAGNOSTIC_FILE` pode apontar para um arquivo 
 - a qualidade depende de áudio e imagem do vídeo;
 - timestamps e inferências continuam sujeitos a erro do modelo e precisam de revisão dos pais;
 - vídeos privados ou não listados não funcionam;
-- C1 não produz atividades nem substitui a validação pedagógica posterior.
+- a análise C1 não substitui a validação pedagógica posterior.
