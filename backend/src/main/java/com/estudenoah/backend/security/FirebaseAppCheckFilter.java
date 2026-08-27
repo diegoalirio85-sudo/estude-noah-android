@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 10)
+@Order(Ordered.HIGHEST_PRECEDENCE + 20)
 public final class FirebaseAppCheckFilter extends OncePerRequestFilter {
     public static final String HEADER = "X-Firebase-AppCheck";
     private static final Set<String> PROTECTED_POST_PATHS = Set.of(
@@ -39,18 +39,22 @@ public final class FirebaseAppCheckFilter extends OncePerRequestFilter {
                                   @Value("${security.rate-limit.requests-per-minute:30}") int requestsPerMinute) {
         this.verifier = verifier;
         this.enabled = enabled;
-        this.authMode = authMode;
+        this.authMode = authMode == null ? "" : authMode.trim();
         this.rateLimiter = new InMemoryRequestRateLimiter(requestsPerMinute);
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !enabled || !"app_check".equals(authMode) || !"POST".equals(request.getMethod()) || !PROTECTED_POST_PATHS.contains(request.getRequestURI());
+        return !"app_check".equals(authMode) || !"POST".equals(request.getMethod()) || !PROTECTED_POST_PATHS.contains(request.getRequestURI());
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        if (!enabled) {
+            reject(response, 503, "app_check_disabled", "Firebase App Check mode is selected but enforcement is disabled.");
+            return;
+        }
         String token = request.getHeader(HEADER);
         if (token == null || token.isBlank()) {
             reject(response, 401, "app_check_token_missing", "Firebase App Check token is required.");
@@ -86,4 +90,3 @@ public final class FirebaseAppCheckFilter extends OncePerRequestFilter {
         response.getWriter().write("{\"code\":\"" + code + "\",\"message\":\"" + message + "\"}");
     }
 }
-
