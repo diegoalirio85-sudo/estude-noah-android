@@ -14,13 +14,14 @@ internal object MathAnswerEvaluator {
         if (student.isBlank() || expected.isBlank()) return null
         if (student == expected) return true
 
-        val studentNumber = parseSimpleNumber(student)
-        val expectedNumber = parseSimpleNumber(expected)
-        if (expectedNumber != null) {
-            if (studentNumber != null) {
-                return studentNumber.compareTo(expectedNumber) == 0
+        val studentValue = parseSimpleValue(student)
+        val expectedValue = parseSimpleValue(expected)
+        if (expectedValue != null) {
+            if (studentValue != null) {
+                return studentValue.number.compareTo(expectedValue.number) == 0 &&
+                    unitsCompatible(studentValue.unit, expectedValue.unit)
             }
-            evaluateArithmeticAnswer(student, expectedNumber)?.let { return it }
+            evaluateArithmeticAnswer(student, expectedValue)?.let { return it }
         }
 
         return if (looksComplex(student) || looksComplex(expected)) null else false
@@ -29,7 +30,9 @@ internal object MathAnswerEvaluator {
     fun shouldShowSolution(answered: Boolean): Boolean = answered
 
     fun prefersNumericKeyboard(expectedAnswer: String): Boolean =
-        parseSimpleNumber(normalizeText(expectedAnswer)) != null
+        parseSimpleValue(normalizeText(expectedAnswer)) != null
+
+    private data class SimpleValue(val number: BigDecimal, val unit: String?)
 
     private fun normalizeText(value: String): String = value
         .trim()
@@ -37,23 +40,37 @@ internal object MathAnswerEvaluator {
         .replace(Regex("\\s+"), " ")
         .replace('−', '-')
 
-    private fun parseSimpleNumber(value: String): BigDecimal? {
-        val match = Regex("^(?:r\\$\\s*)?([+-]?\\d+(?:[.,]\\d+)?)(?:\\s*[a-zà-ÿ%²³]+)?$").matchEntire(value)
+    private fun parseSimpleValue(value: String): SimpleValue? {
+        val match = Regex("^(?:(r\\$)\\s*)?([+-]?\\d+(?:[.,]\\d+)?)(?:\\s*([a-zà-ÿ%²³]+))?$").matchEntire(value)
             ?: return null
-        return parseDecimal(match.groupValues[1])
+        val number = parseDecimal(match.groupValues[2]) ?: return null
+        val prefixUnit = match.groupValues[1].takeIf { it.isNotBlank() }
+        val suffixUnit = match.groupValues[3].takeIf { it.isNotBlank() }
+        val unit = when {
+            prefixUnit != null && suffixUnit != null -> {
+                val prefix = canonicalUnit(prefixUnit)
+                val suffix = canonicalUnit(suffixUnit)
+                if (prefix != suffix) return null
+                prefix
+            }
+            prefixUnit != null -> canonicalUnit(prefixUnit)
+            suffixUnit != null -> canonicalUnit(suffixUnit)
+            else -> null
+        }
+        return SimpleValue(number, unit)
     }
 
-    private fun evaluateArithmeticAnswer(value: String, expected: BigDecimal): Boolean? {
+    private fun evaluateArithmeticAnswer(value: String, expected: SimpleValue): Boolean? {
         val equation = Regex("^(.+?)\\s*=\\s*(.+)$").matchEntire(value)
         if (equation != null) {
             val left = parseBinaryExpression(equation.groupValues[1]) ?: return null
-            val right = parseSimpleNumber(equation.groupValues[2]) ?: return null
-            if (left.compareTo(right) != 0) return false
-            return right.compareTo(expected) == 0
+            val right = parseSimpleValue(equation.groupValues[2]) ?: return null
+            if (left.compareTo(right.number) != 0) return false
+            return right.number.compareTo(expected.number) == 0 && unitsCompatible(right.unit, expected.unit)
         }
 
         val result = parseBinaryExpression(value) ?: return null
-        return result.compareTo(expected) == 0
+        return result.compareTo(expected.number) == 0
     }
 
     private fun parseBinaryExpression(value: String): BigDecimal? {
@@ -68,6 +85,14 @@ internal object MathAnswerEvaluator {
             "/", ":", "÷" -> if (right.compareTo(BigDecimal.ZERO) == 0) null else left.divide(right, MathContext.DECIMAL128)
             else -> null
         }
+    }
+
+    private fun unitsCompatible(studentUnit: String?, expectedUnit: String?): Boolean =
+        studentUnit == null || expectedUnit == null || studentUnit == expectedUnit
+
+    private fun canonicalUnit(value: String): String = when (value.lowercase(Locale.ROOT)) {
+        "r$", "real", "reais" -> "real"
+        else -> value.lowercase(Locale.ROOT)
     }
 
     private fun parseDecimal(value: String): BigDecimal? =
