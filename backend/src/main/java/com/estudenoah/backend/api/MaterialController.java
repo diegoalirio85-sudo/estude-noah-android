@@ -28,13 +28,14 @@ public final class MaterialController {
     public PptExtractionResult extractPpt(@RequestPart("file") MultipartFile file) {
         String fileName = file.getOriginalFilename();
         if (file.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "empty_file", "Envie um arquivo PPT não vazio.");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "empty_file", "Envie um arquivo PPT/PPS não vazio.");
         }
-        if (fileName == null || !fileName.toLowerCase(Locale.ROOT).endsWith(".ppt")) {
+        String normalizedName = fileName == null ? "" : fileName.toLowerCase(Locale.ROOT);
+        if (!normalizedName.endsWith(".ppt") && !normalizedName.endsWith(".pps")) {
             throw new ApiException(
                     HttpStatus.UNSUPPORTED_MEDIA_TYPE,
                     "unsupported_file_type",
-                    "Este endpoint aceita somente PowerPoint binário com extensão .ppt."
+                    "Este endpoint aceita somente PowerPoint binário com extensão .ppt ou .pps."
             );
         }
 

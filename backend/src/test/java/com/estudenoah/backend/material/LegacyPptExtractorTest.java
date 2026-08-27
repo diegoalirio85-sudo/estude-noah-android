@@ -30,6 +30,23 @@ class LegacyPptExtractorTest {
     }
 
     @Test
+    void extractsRealPpsFixtureWithHslf() throws Exception {
+        byte[] pps;
+        try (var input = LegacyPptExtractorTest.class.getResourceAsStream("/fixtures/legacy-aula.pps")) {
+            assertThat(input).as("fixture PPS física").isNotNull();
+            pps = input.readAllBytes();
+        }
+
+        assertThat(pps).startsWith((byte) 0xD0, (byte) 0xCF, (byte) 0x11, (byte) 0xE0);
+        PptExtractionResult result = extractor.extract("aula.pps", new ByteArrayInputStream(pps));
+
+        assertThat(result.fileName()).isEqualTo("aula.pps");
+        assertThat(result.slideCount()).isEqualTo(1);
+        assertThat(result.text()).contains("Sistema Solar").contains("Conteúdo didático");
+        assertThat(result.usableForGeneration()).isTrue();
+    }
+
+    @Test
     void preservesOrderAcrossMultipleSlides() throws Exception {
         byte[] ppt = presentation(
                 new String[]{"Primeiro slide"},

@@ -20,7 +20,7 @@ internal data class ImportedMaterialResult(
 )
 
 internal object MaterialFileExtractor {
-    private val accepted = setOf("pdf", "ppt", "pptx", "docx", "odt", "doc", "mp4", "mp3", "avi")
+    private val accepted = setOf("pdf", "pptx", "docx", "odt", "doc", "mp4", "mp3", "avi")
 
     fun displayName(context: Context, uri: Uri): String {
         val resolver = context.contentResolver
@@ -62,14 +62,14 @@ internal object MaterialFileExtractor {
                     val text = extractZipXml(context, uri) { entry -> entry == "content.xml" }
                     resultFromText(name, ext, text, "Texto extraído do ODT.")
                 }
-                "doc", "ppt" -> {
+                "doc" -> {
                     val bytes = readAllLimited(context, uri, 16 * 1024 * 1024)
                     val text = extractLegacyPrintableText(bytes)
                     resultFromText(
                         name,
                         ext,
                         text,
-                        if (text.length >= 140) "Texto recuperado do formato antigo .$ext (extração experimental). Revise antes de gerar." else "Arquivo .$ext selecionado, mas não foi possível recuperar texto suficiente. Prefira salvar como ${if (ext == "doc") "DOCX" else "PPTX"}."
+                        if (text.length >= 140) "Texto recuperado do formato antigo .$ext (extração experimental). Revise antes de gerar." else "Arquivo .$ext selecionado, mas não foi possível recuperar texto suficiente. Prefira salvar como DOCX."
                     )
                 }
                 "pdf" -> extractPdf(context, uri, name, ext)

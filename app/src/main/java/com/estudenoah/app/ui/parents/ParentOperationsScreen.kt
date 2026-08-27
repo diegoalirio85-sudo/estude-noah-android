@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.google.firebase.auth.FirebaseAuth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,7 +27,8 @@ internal fun ParentOperationsScreen(
     onBack: () -> Unit,
     onManageQuestions: () -> Unit,
     onImportMaterial: () -> Unit,
-    onChangePin: () -> Unit
+    onChangePin: () -> Unit,
+    onBackendAccount: () -> Unit
 ) {
     Scaffold(topBar = { TopAppBar(title = { Text("Área dos Pais", fontWeight = FontWeight.Bold) }, navigationIcon = { TextButton(onClick = onBack) { Text("← Início") } }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -34,6 +36,9 @@ internal fun ParentOperationsScreen(
             ParentCard("Perfil de estudo", "Preferências do aluno e rotina de estudos serão configuradas aqui.")
             ParentCard("Integrações escolares", "Agenda, AVA e materiais sincronizados serão conectados em etapas futuras.")
             ParentCard("Perguntas locais", "$questionCount pergunta${if (questionCount == 1) "" else "s"} personalizada${if (questionCount == 1) "" else "s"} cadastrada${if (questionCount == 1) "" else "s"}.")
+            val backendUser = FirebaseAuth.getInstance().currentUser
+            ParentCard("Conta do backend", backendUser?.email?.let { "Conectado como $it" } ?: "Desconectado")
+            OutlinedButton(onClick = onBackendAccount, modifier = Modifier.fillMaxWidth()) { Text("Conta do backend") }
             OutlinedButton(onClick = onManageQuestions, modifier = Modifier.fillMaxWidth()) { Text("Gerenciar perguntas locais") }
             OutlinedButton(onClick = onImportMaterial, modifier = Modifier.fillMaxWidth()) { Text("Importar material manualmente") }
             OutlinedButton(onClick = onChangePin, modifier = Modifier.fillMaxWidth()) { Text("Alterar PIN") }

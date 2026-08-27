@@ -20,6 +20,8 @@ Feedback curto, corretivo e sustentado pelo material.
 ## Matemática
 Primeiro detectar a habilidade; depois criar problemas novos que avaliem essa habilidade, com resposta e solução.
 
+Toda questão `MATH_PROBLEMS` exige resposta livre do aluno antes de revelar resultado, resposta correta, explicação ou passos. A comparação no Android é determinística: normaliza espaços e equivalências numéricas/decimais seguras, sem LLM. Formatos complexos não recebem julgamento automático frágil; após a tentativa, o aluno recebe a resposta esperada e a solução para revisão. O fluxo Verdadeiro/Falso permanece separado.
+
 ## Auditoria pedagógica
 Antes de publicar:
 - está sustentado?

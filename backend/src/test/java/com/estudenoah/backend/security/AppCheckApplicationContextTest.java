@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest(properties = {
         "APP_CHECK_ENABLED=true",
+        "BACKEND_AUTH_MODE=app_check",
         "FIREBASE_PROJECT_NUMBER=1048661265103",
         "FIREBASE_APP_IDS=1:1048661265103:android:78e26aa9cc07930e4c85ba"
 })

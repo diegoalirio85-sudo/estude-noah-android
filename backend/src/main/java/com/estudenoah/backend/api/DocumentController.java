@@ -45,9 +45,10 @@ public final class DocumentController {
     public GeneratedActivity fromPpt(@RequestPart("file") MultipartFile file, @RequestParam("subject") String subject,
                                      @RequestParam("grade") String grade) {
         String fileName = file.getOriginalFilename();
-        if (file.isEmpty()) throw api(HttpStatus.BAD_REQUEST, "empty_file", "Envie um arquivo PPT não vazio.");
-        if (fileName == null || !fileName.toLowerCase(Locale.ROOT).endsWith(".ppt"))
-            throw api(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported_file_type", "Este endpoint aceita somente PowerPoint binário com extensão .ppt.");
+        if (file.isEmpty()) throw api(HttpStatus.BAD_REQUEST, "empty_file", "Envie um arquivo PPT/PPS não vazio.");
+        String normalizedName = fileName == null ? "" : fileName.toLowerCase(Locale.ROOT);
+        if (!normalizedName.endsWith(".ppt") && !normalizedName.endsWith(".pps"))
+            throw api(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported_file_type", "Este endpoint aceita somente PowerPoint binário com extensão .ppt ou .pps.");
         try {
             var extraction = pptExtractor.extract(fileName, file.getInputStream());
             if (!extraction.usableForGeneration())

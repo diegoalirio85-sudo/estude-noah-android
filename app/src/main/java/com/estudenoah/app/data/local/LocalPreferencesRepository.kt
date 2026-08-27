@@ -140,39 +140,14 @@ internal class LocalPreferencesRepository(context: Context) {
             LocalPersistenceContract.HISTORY_KEY,
             "[]"
         ) ?: "[]"
-        return runCatching {
-            val array = JSONArray(raw)
-            buildList {
-                for (i in 0 until array.length()) {
-                    val item = array.getJSONObject(i)
-                    add(
-                        HistoryEntry(
-                            subject = item.getString("subject"),
-                            score = item.getInt("score"),
-                            total = item.getInt("total"),
-                            timestamp = item.getLong("timestamp")
-                        )
-                    )
-                }
-            }.sortedByDescending { it.timestamp }
-        }.getOrElse { emptyList() }
+        return HistoryJsonCodec.decode(raw)
     }
 
     fun addHistory(entry: HistoryEntry) {
         val current = loadHistory().toMutableList()
         current.add(0, entry)
-        val array = JSONArray()
-        current.take(50).forEach {
-            array.put(
-                JSONObject()
-                    .put("subject", it.subject)
-                    .put("score", it.score)
-                    .put("total", it.total)
-                    .put("timestamp", it.timestamp)
-            )
-        }
         preferences.edit()
-            .putString(LocalPersistenceContract.HISTORY_KEY, array.toString())
+            .putString(LocalPersistenceContract.HISTORY_KEY, HistoryJsonCodec.encode(current))
             .apply()
     }
 
@@ -192,6 +167,8 @@ internal class LocalPreferencesRepository(context: Context) {
                     .put("options", JSONArray(question.options))
                     .put("correctIndex", question.correctIndex)
                     .put("explanation", question.explanation)
+                    .put("mathAnswer", question.mathAnswer)
+                    .put("solutionSteps", JSONArray(question.solutionSteps))
             )
         }
         return array.toString()
@@ -214,7 +191,11 @@ internal class LocalPreferencesRepository(context: Context) {
                         prompt = item.getString("prompt"),
                         options = options,
                         correctIndex = item.getInt("correctIndex"),
-                        explanation = item.optString("explanation", "")
+                        explanation = item.optString("explanation", ""),
+                        mathAnswer = item.optString("mathAnswer", "").ifBlank { null },
+                        solutionSteps = item.optJSONArray("solutionSteps")?.let { steps ->
+                            buildList { for (j in 0 until steps.length()) add(steps.getString(j)) }
+                        }.orEmpty()
                     )
                 )
             }

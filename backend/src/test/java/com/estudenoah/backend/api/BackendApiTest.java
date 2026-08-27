@@ -24,11 +24,12 @@ import com.estudenoah.backend.material.PptExtractionResult;
 import com.estudenoah.backend.material.PptExtractionException;
 import com.estudenoah.backend.video.VideoAnalysis;
 import com.estudenoah.backend.security.AppCheckTokenVerifier;
+import com.estudenoah.backend.security.FirebaseAuthTokenVerifier;
 import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-@WebMvcTest(properties = "security.app-check.enabled=false", value = {HealthController.class, MaterialController.class, YoutubeMaterialController.class, ActivityController.class,
+@WebMvcTest(properties = {"security.app-check.enabled=false", "security.auth.mode=none", "security.auth.allow-none=true"}, value = {HealthController.class, MaterialController.class, YoutubeMaterialController.class, ActivityController.class,
         DocumentController.class, DocumentActivityPipelineService.class, GeminiDocumentAnalysisService.class,
         YoutubeUrlNormalizer.class, ApiExceptionHandler.class})
 class BackendApiTest {
@@ -49,6 +50,9 @@ class BackendApiTest {
 
     @MockitoBean
     private AppCheckTokenVerifier appCheckTokenVerifier;
+
+    @MockitoBean
+    private FirebaseAuthTokenVerifier firebaseAuthTokenVerifier;
 
     @Test
     void healthDoesNotDependOnExternalServices() throws Exception {
@@ -138,6 +142,16 @@ class BackendApiTest {
     }
 
     @Test
+    void generatesActivityFromValidLegacyPps() throws Exception {
+        String text = "conteúdo pedagógico ".repeat(12);
+        when(extractor.extract(any(), any())).thenReturn(new PptExtractionResult("aula.pps", 1, text, List.of(), true));
+        when(documentAnalysisProvider.analyze(any())).thenReturn(documentAnalysis("pps"));
+        var upload = new MockMultipartFile("file", "AULA.PPS", "application/octet-stream", new byte[]{1, 2});
+        mockMvc.perform(multipart("/v1/activities/from-ppt").file(upload).param("subject", "Ciências").param("grade", "4º Ano"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void rejectsPptWithoutUsableText() throws Exception {
         when(extractor.extract(any(), any())).thenReturn(new PptExtractionResult("vazio.ppt", 1, "Slide 1", List.of(), false));
         var upload = new MockMultipartFile("file", "vazio.ppt", "application/vnd.ms-powerpoint", new byte[]{1});
@@ -164,4 +178,3 @@ class BackendApiTest {
         return new DocumentAnalysis(type, "Aula", "Ciências", "Resumo", List.of(theme), List.of());
     }
 }
-

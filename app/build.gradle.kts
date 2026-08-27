@@ -4,6 +4,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val backendBaseUrl = providers.gradleProperty("ESTUDE_NOAH_BACKEND_BASE_URL")
+    .orElse(providers.environmentVariable("ESTUDE_NOAH_BACKEND_BASE_URL"))
+    .orElse("https://estude-noah-backend-rgwyoc2iwa-rj.a.run.app")
+
 android {
     namespace = "com.estudenoah.app"
     compileSdk = 37
@@ -14,6 +18,7 @@ android {
         targetSdk = 37
         versionCode = 6
         versionName = "3.3"
+        buildConfigField("String", "ESTUDE_NOAH_BACKEND_BASE_URL", "\"${backendBaseUrl.get()}\"")
     }
 
     signingConfigs {
@@ -27,6 +32,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {
@@ -56,6 +62,9 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("com.google.firebase:firebase-appcheck")
     implementation("com.google.firebase:firebase-appcheck-playintegrity")
+    implementation("com.google.firebase:firebase-auth")
     debugImplementation("com.google.firebase:firebase-appcheck-debug")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20250517")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }
-

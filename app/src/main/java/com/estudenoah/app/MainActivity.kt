@@ -7,17 +7,23 @@ import android.content.Intent
 import com.estudenoah.app.data.local.LocalPreferencesRepository
 import com.estudenoah.app.domain.CustomQuestion
 import com.estudenoah.app.domain.HistoryEntry
+import com.estudenoah.app.domain.MathAnswerEvaluator
 import com.estudenoah.app.domain.PreparedActivity
 import com.estudenoah.app.domain.Question
 import com.estudenoah.app.domain.Subject
+import com.estudenoah.app.domain.StudentAnswerRecord
 import com.estudenoah.app.material.MaterialFileExtractor
+import com.estudenoah.app.network.BackendActivityRepository
+import com.estudenoah.app.network.BackendException
 import com.estudenoah.app.ui.home.FiveZoneHomeScreen
 import com.estudenoah.app.ui.home.MaterialDetailScreen
 import com.estudenoah.app.ui.home.TodayMaterial
 import com.estudenoah.app.ui.parents.ParentOperationsScreen
+import com.estudenoah.app.ui.parents.BackendAccountScreen
 import com.estudenoah.app.ui.review.ReviewScreen
 import com.estudenoah.app.ui.trophy.TrophyScreen
 import android.os.Bundle
+import android.net.Uri
 import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -141,6 +147,7 @@ private enum class AppScreen {
     PARENT_QUESTIONS,
     QUESTION_EDITOR,
     CHANGE_PIN,
+    BACKEND_ACCOUNT,
     MATERIAL_INPUT,
     MATERIAL_PREVIEW,
     REVIEW,
@@ -208,6 +215,8 @@ private object QuestionJson {
                     .put("options", JSONArray(question.options))
                     .put("correctIndex", question.correctIndex)
                     .put("explanation", question.explanation)
+                    .put("mathAnswer", question.mathAnswer)
+                    .put("solutionSteps", JSONArray(question.solutionSteps))
             )
         }
         return array.toString()
@@ -228,7 +237,11 @@ private object QuestionJson {
                         prompt = item.getString("prompt"),
                         options = options,
                         correctIndex = item.getInt("correctIndex"),
-                        explanation = item.optString("explanation", "")
+                        explanation = item.optString("explanation", ""),
+                        mathAnswer = item.optString("mathAnswer", "").ifBlank { null },
+                        solutionSteps = item.optJSONArray("solutionSteps")?.let { steps ->
+                            buildList { for (j in 0 until steps.length()) add(steps.getString(j)) }
+                        }.orEmpty()
                     )
                 )
             }
@@ -562,6 +575,7 @@ private fun EstudeNoahApp() {
     var quizReturnScreenName by rememberSaveable { mutableStateOf(AppScreen.SUBJECTS.name) }
     var historySubjectLabel by rememberSaveable { mutableStateOf("") }
     var activePreparedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var studentAnswers by remember { mutableStateOf<List<StudentAnswerRecord>>(emptyList()) }
     var selectedHomeMaterial by remember { mutableStateOf<TodayMaterial?>(null) }
 
     val screen = AppScreen.valueOf(screenName)
@@ -585,6 +599,7 @@ private fun EstudeNoahApp() {
         quizReturnScreenName = AppScreen.SUBJECTS.name
         historySubjectLabel = ""
         activePreparedId = null
+        studentAnswers = emptyList()
     }
 
     fun startActivity(
@@ -603,6 +618,7 @@ private fun EstudeNoahApp() {
         feedback = null
         quizReturnScreenName = returnScreen.name
         historySubjectLabel = historyLabel
+        studentAnswers = emptyList()
         activePreparedId = preparedId
         screenName = AppScreen.QUIZ.name
     }
@@ -637,6 +653,7 @@ private fun EstudeNoahApp() {
             AppScreen.PARENT_QUESTIONS -> screenName = AppScreen.PARENT_HOME.name
             AppScreen.QUESTION_EDITOR -> screenName = AppScreen.PARENT_QUESTIONS.name
             AppScreen.CHANGE_PIN -> screenName = AppScreen.PARENT_HOME.name
+            AppScreen.BACKEND_ACCOUNT -> screenName = AppScreen.PARENT_HOME.name
             AppScreen.MATERIAL_INPUT -> screenName = AppScreen.PARENT_HOME.name
             AppScreen.MATERIAL_PREVIEW -> screenName = AppScreen.MATERIAL_INPUT.name
             AppScreen.REVIEW -> goHome()
@@ -693,6 +710,20 @@ private fun EstudeNoahApp() {
                                 }
                             }
                         },
+                        onMathAnswer = { studentAnswer ->
+                            if (!solved && question.isMathProblem) {
+                                val evaluation = MathAnswerEvaluator.evaluate(studentAnswer, question.mathAnswer.orEmpty())
+                                if (evaluation == true) score += 1
+                                firstAttemptAlreadyUsed = evaluation != true
+                                solved = true
+                                feedback = when (evaluation) {
+                                    true -> "Resposta correta!"
+                                    false -> "Não foi dessa vez."
+                                    null -> "Confira sua resposta."
+                                }
+                                studentAnswers = studentAnswers + StudentAnswerRecord(question.id, studentAnswer.trim(), evaluation)
+                            }
+                        },
                         onNext = {
                             if (questionIndex == activeQuestions.lastIndex) {
                                 finalScore = score
@@ -701,7 +732,8 @@ private fun EstudeNoahApp() {
                                         subject = historySubjectLabel.ifBlank { subject.label },
                                         score = score,
                                         total = activeQuestions.size,
-                                        timestamp = System.currentTimeMillis()
+                                        timestamp = System.currentTimeMillis(),
+                                        answers = studentAnswers
                                     )
                                 )
                                 if (activePreparedId != null) {
@@ -749,7 +781,12 @@ private fun EstudeNoahApp() {
                 onBack = ::goHome,
                 onManageQuestions = { screenName = AppScreen.PARENT_QUESTIONS.name },
                 onImportMaterial = { screenName = AppScreen.MATERIAL_INPUT.name },
-                onChangePin = { screenName = AppScreen.CHANGE_PIN.name }
+                onChangePin = { screenName = AppScreen.CHANGE_PIN.name },
+                onBackendAccount = { screenName = AppScreen.BACKEND_ACCOUNT.name }
+            )
+
+            AppScreen.BACKEND_ACCOUNT -> BackendAccountScreen(
+                onBack = { screenName = AppScreen.PARENT_HOME.name }
             )
 
             AppScreen.PARENT_QUESTIONS -> ParentQuestionsScreen(
@@ -805,14 +842,7 @@ private fun EstudeNoahApp() {
                     questions = questions,
                     onBack = { screenName = AppScreen.MATERIAL_INPUT.name },
                     onRegenerate = {
-                        materialSalt += 1L
-                        val regenerated = MaterialQuestionGenerator.generate(
-                            text = materialText,
-                            subject = subject,
-                            count = 5,
-                            salt = materialSalt
-                        )
-                        if (regenerated.size == 5) materialQuestionsJson = QuestionJson.encode(regenerated)
+                        screenName = AppScreen.MATERIAL_INPUT.name
                     },
                     onSave = {
                         localPreferences.savePreparedActivity(
@@ -915,10 +945,14 @@ private fun QuizScreen(
     firstAttemptAlreadyUsed: Boolean,
     onBack: () -> Unit,
     onAnswer: (Int) -> Unit,
+    onMathAnswer: (String) -> Unit,
     onNext: () -> Unit
 ) {
     val wrongSelections = remember(question.id) { mutableStateListOf<Int>() }
     val trueFalse = question.options == listOf("Verdadeiro", "Falso")
+    val mathProblem = question.isMathProblem
+    val feedbackIsCorrect = !mathProblem || feedback == "Resposta correta!"
+    var mathInput by rememberSaveable(question.id) { mutableStateOf("") }
 
     Scaffold(
         containerColor = Cream,
@@ -952,7 +986,28 @@ private fun QuizScreen(
                 }
                 Spacer(Modifier.height(18.dp))
 
-                question.options.forEachIndexed { index, option ->
+                if (mathProblem) {
+                    OutlinedTextField(
+                        value = mathInput,
+                        onValueChange = { mathInput = it.take(80) },
+                        enabled = !solved,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(MathAnswerEvaluator.INPUT_LABEL) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = if (MathAnswerEvaluator.prefersNumericKeyboard(question.mathAnswer.orEmpty())) KeyboardType.Decimal else KeyboardType.Text
+                        )
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = { onMathAnswer(mathInput) },
+                        enabled = !solved && mathInput.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(18.dp)
+                    ) { Text(MathAnswerEvaluator.SUBMIT_LABEL, fontWeight = FontWeight.Bold) }
+                }
+
+                if (!mathProblem) question.options.forEachIndexed { index, option ->
                     val wasWrong = index in wrongSelections
                     val isCorrectSolved = solved && index == question.correctIndex
                     val containerColor = when {
@@ -988,12 +1043,23 @@ private fun QuizScreen(
                     Spacer(Modifier.height(14.dp))
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = if (solved) GreenSoft else RedSoft),
+                        colors = CardDefaults.cardColors(containerColor = if (solved && feedbackIsCorrect) GreenSoft else RedSoft),
                         shape = RoundedCornerShape(18.dp)
                     ) {
                         Column(Modifier.padding(18.dp)) {
-                            Text(feedback, color = if (solved) Green else Red, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                            if (solved) {
+                            Text(feedback, color = if (solved && feedbackIsCorrect) Green else Red, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            if (solved && mathProblem) {
+                                Spacer(Modifier.height(8.dp))
+                                Text("Resposta correta: ${question.mathAnswer}", color = Ink, fontWeight = FontWeight.Bold)
+                                if (question.explanation.isNotBlank()) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(question.explanation, color = Ink)
+                                }
+                                question.solutionSteps.forEachIndexed { index, step ->
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("${index + 1}. $step", color = Ink)
+                                }
+                            } else if (solved) {
                                 if (question.explanation.isNotBlank()) {
                                     Spacer(Modifier.height(6.dp))
                                     Text(question.explanation, color = Ink)
@@ -1504,9 +1570,52 @@ private fun MaterialInputScreen(
     var fileStatus by rememberSaveable { mutableStateOf<String?>(null) }
     var importedFiles by rememberSaveable { mutableStateOf("") }
     var importingFiles by rememberSaveable { mutableStateOf(false) }
+    var generatingActivity by rememberSaveable { mutableStateOf(false) }
+    var selectedPptUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedPptName by rememberSaveable { mutableStateOf<String?>(null) }
+    var sourceType by rememberSaveable { mutableStateOf("text") }
     val subject = runCatching { Subject.valueOf(subjectName) }.getOrDefault(Subject.PORTUGUES)
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
+    val backendRepository = remember { BackendActivityRepository() }
+
+    suspend fun generateActivity(
+        activityTitle: String,
+        internalText: String,
+        internalSourceType: String,
+        pptUri: Uri? = null,
+        pptName: String? = null,
+        preserveSourceInput: Boolean = false
+    ) {
+        generatingActivity = true
+        error = null
+        fileStatus = "Analisando o material e preparando a atividade…"
+        try {
+            val questions = withContext(Dispatchers.IO) {
+                when {
+                    pptUri != null -> backendRepository.fromPpt(context, pptUri, pptName ?: "material.ppt", subject.label)
+                    Regex("^https?://(?:www\\.)?(?:youtube\\.com|youtu\\.be)/", RegexOption.IGNORE_CASE).containsMatchIn(internalText) ->
+                        backendRepository.fromYoutube(internalText, subject.label)
+                    else -> backendRepository.fromText(internalSourceType, activityTitle, subject.label, internalText)
+                }
+            }
+            if (questions.isEmpty()) throw BackendException(code = "incompatible_response", message = "No questions returned.")
+            onGenerate(
+                subject,
+                activityTitle,
+                com.estudenoah.app.material.MaterialRouting.sourceTextForPersistence(preserveSourceInput, internalText),
+                questions
+            )
+        } catch (failure: BackendException) {
+            error = failure.userMessage()
+            fileStatus = null
+        } catch (_: Exception) {
+            error = "Não foi possível preparar a atividade. Tente novamente."
+            fileStatus = null
+        } finally {
+            generatingActivity = false
+        }
+    }
 
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -1519,10 +1628,17 @@ private fun MaterialInputScreen(
                 .orEmpty()
 
             if (spoken.isNotBlank()) {
-                val separator = if (text.isBlank()) "" else "\n\n"
-                text = (text.trimEnd() + separator + spoken).take(25000)
+                text = spoken.take(25000)
+                importedFiles = "Entrada de voz"
                 error = null
                 voiceError = null
+                scope.launch {
+                    generateActivity(
+                        activityTitle = title.trim().ifBlank { "Material de ${subject.label}" },
+                        internalText = text,
+                        internalSourceType = "voice"
+                    )
+                }
             } else {
                 voiceError = "Não consegui reconhecer o que foi falado. Tente novamente."
             }
@@ -1536,24 +1652,66 @@ private fun MaterialInputScreen(
         importingFiles = true
         fileStatus = "Lendo ${uris.size} arquivo(s)..."
         scope.launch {
-            val results = withContext(Dispatchers.IO) {
-                uris.take(8).map { uri -> MaterialFileExtractor.extract(context, uri) }
+            val selected = withContext(Dispatchers.IO) {
+                uris.take(8).map { uri ->
+                    Triple(uri, MaterialFileExtractor.displayName(context, uri), context.contentResolver.getType(uri))
+                }
             }
+            val legacyPpts = selected.filter { (_, name, mimeType) ->
+                com.estudenoah.app.material.MaterialRouting.route(name, mimeType) ==
+                    com.estudenoah.app.material.MaterialRoute.LEGACY_PPT_BACKEND
+            }
+            if (legacyPpts.isNotEmpty()) {
+                if (selected.size != 1) {
+                    error = "Para analisar PowerPoint antigo, selecione apenas um arquivo .ppt ou .pps por vez."
+                    importingFiles = false
+                    return@launch
+                }
+                selectedPptUri = legacyPpts.first().first.toString()
+                selectedPptName = legacyPpts.first().second
+                sourceType = "ppt"
+                text = ""
+                importedFiles = legacyPpts.first().second
+                fileStatus = "• ${legacyPpts.first().second}: o arquivo será analisado com segurança pelo servidor."
+                if (title.isBlank()) title = legacyPpts.first().second.substringBeforeLast('.').take(80)
+                error = null
+                importingFiles = false
+                generateActivity(
+                    activityTitle = title.ifBlank { legacyPpts.first().second.substringBeforeLast('.').take(80) },
+                    internalText = "",
+                    internalSourceType = "ppt",
+                    pptUri = legacyPpts.first().first,
+                    pptName = legacyPpts.first().second
+                )
+                return@launch
+            }
+            selectedPptUri = null
+            selectedPptName = null
+            text = ""
+            val results = withContext(Dispatchers.IO) { selected.map { (uri, _, _) -> MaterialFileExtractor.extract(context, uri) } }
             val usableTexts = results.mapNotNull { result ->
                 result.extractedText.takeIf { it.isNotBlank() }
                     ?.let { "[${result.fileName}]\n$it" }
             }
             if (usableTexts.isNotEmpty()) {
-                val separator = if (text.isBlank()) "" else "\n\n"
-                text = (text.trimEnd() + separator + usableTexts.joinToString("\n\n")).take(25000)
+                text = usableTexts.joinToString("\n\n").take(25000)
                 error = null
                 if (title.isBlank() && results.size == 1) {
                     title = results.first().fileName.substringBeforeLast('.').take(80)
                 }
             }
             importedFiles = results.joinToString(" • ") { it.fileName }
-            fileStatus = results.joinToString("\n") { "• ${it.fileName}: ${it.message}" }
+            sourceType = results.singleOrNull()?.extension?.ifBlank { "text" } ?: "text"
+            fileStatus = if (text.length >= 140) "Analisando o material e preparando a atividade…" else
+                results.joinToString("\n") { "• ${it.fileName}: ${com.estudenoah.app.material.MaterialRouting.FRIENDLY_PROCESSING_FAILURE}" }
             importingFiles = false
+            if (text.length >= 140) {
+                generateActivity(
+                    activityTitle = title.trim().ifBlank { "Material de ${subject.label}" },
+                    internalText = text,
+                    internalSourceType = sourceType
+                )
+            }
         }
     }
 
@@ -1612,7 +1770,7 @@ private fun MaterialInputScreen(
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "Formatos aceitos: PDF, PPT, PPTX, DOC, DOCX, ODT, MP3, MP4 e AVI. Você pode selecionar mais de um arquivo.",
+                "Formatos aceitos: PDF, PPT, PPS, PPTX, DOC, DOCX, ODT, MP3, MP4 e AVI. Você pode selecionar mais de um arquivo.",
                 color = Muted,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center
@@ -1635,24 +1793,29 @@ private fun MaterialInputScreen(
             }
 
             Spacer(Modifier.height(14.dp))
-            OutlinedTextField(
-                value = text,
-                onValueChange = { value ->
-                    text = value.take(25000)
-                    error = null
-                    voiceError = null
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Texto extraído / material") },
-                minLines = 12,
-                supportingText = { Text("${text.length}/25.000 caracteres") },
-                isError = error != null
-            )
+            if (importedFiles.isBlank()) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { value ->
+                        text = value.take(25000)
+                        error = null
+                        voiceError = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Cole um texto ou uma URL do YouTube") },
+                    minLines = 8,
+                    supportingText = { Text("${text.length}/25.000 caracteres") },
+                    isError = error != null
+                )
+            }
 
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = {
                     text = ""
+                    selectedPptUri = null
+                    selectedPptName = null
+                    sourceType = "text"
                     importedFiles = ""
                     fileStatus = null
                     error = null
@@ -1662,7 +1825,7 @@ private fun MaterialInputScreen(
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(18.dp)
             ) {
-                Text("🗑️ Apagar material extraído", fontWeight = FontWeight.Bold)
+                Text("🗑️ Remover material selecionado", fontWeight = FontWeight.Bold)
             }
 
             Spacer(Modifier.height(10.dp))
@@ -1680,6 +1843,7 @@ private fun MaterialInputScreen(
                         voiceError = "Este tablet não encontrou um serviço de reconhecimento de voz disponível."
                     }
                 },
+                enabled = importedFiles.isBlank(),
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(18.dp)
             ) {
@@ -1687,7 +1851,7 @@ private fun MaterialInputScreen(
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "DOCX, PPTX e ODT têm o texto extraído localmente. PDF depende do mecanismo PDF atualizado do Android. DOC/PPT antigos usam extração experimental. MP3/MP4/AVI podem ser selecionados, mas a transcrição automática do áudio entra na próxima etapa.",
+                "A extração, transcrição, OCR e análise são etapas internas. O aplicativo mostra somente o material selecionado e a atividade pronta.",
                 color = Muted,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center
@@ -1707,28 +1871,35 @@ private fun MaterialInputScreen(
                 }
             }
 
+            if (generatingActivity) {
+                Spacer(Modifier.height(10.dp))
+                Card(colors = CardDefaults.cardColors(containerColor = BlueSoft), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                    Text("Analisando o material e preparando a atividade…", color = Blue, fontWeight = FontWeight.Bold, modifier = Modifier.padding(14.dp))
+                }
+            }
+
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {
                     val cleanText = text.trim()
-                    val generated = MaterialQuestionGenerator.generate(cleanText, subject, count = 5)
-                    if (generated.size < 5) {
-                        error = if (subject == Subject.MATEMATICA) {
-                            "Não consegui criar 5 questões de Matemática a partir desse material. Confira o conteúdo ou acrescente mais texto."
-                        } else {
-                            "Não consegui criar 5 afirmações seguras a partir desse material. Confira o texto extraído ou acrescente mais conteúdo."
-                        }
-                    } else {
-                        val cleanTitle = title.trim().ifBlank { "Material de ${subject.label}" }
-                        onGenerate(subject, cleanTitle, cleanText, generated)
+                    val cleanTitle = title.trim().ifBlank { "Material de ${subject.label}" }
+                    scope.launch {
+                        generateActivity(
+                            activityTitle = cleanTitle,
+                            internalText = cleanText,
+                            internalSourceType = sourceType,
+                            pptUri = selectedPptUri?.let(Uri::parse),
+                            pptName = selectedPptName,
+                            preserveSourceInput = importedFiles.isBlank()
+                        )
                     }
                 },
-                enabled = text.trim().length >= 140 && !importingFiles,
+                enabled = !generatingActivity && !importingFiles && (selectedPptUri != null || text.trim().length >= 140 || Regex("^https?://(?:www\\.)?(?:youtube\\.com|youtu\\.be)/", RegexOption.IGNORE_CASE).containsMatchIn(text.trim())),
                 modifier = Modifier.fillMaxWidth().height(62.dp),
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Text(
-                    if (subject == Subject.MATEMATICA) "Gerar 5 questões de Matemática" else "Gerar 5 afirmações (V/F)",
+                    if (generatingActivity) "Preparando atividade…" else if (subject == Subject.MATEMATICA) "Gerar atividade de Matemática" else "Gerar atividade pedagógica",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 )
@@ -1796,14 +1967,14 @@ private fun MaterialPreviewScreen(
 
             Button(
                 onClick = onSave,
-                enabled = questions.size == 5,
+                enabled = questions.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().height(62.dp),
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Text("Salvar como atividade preparada", fontWeight = FontWeight.Bold, fontSize = 17.sp)
             }
             Spacer(Modifier.height(10.dp))
-            OutlinedButton(onClick = onTest, enabled = questions.size == 5, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(18.dp)) {
+            OutlinedButton(onClick = onTest, enabled = questions.isNotEmpty(), modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(18.dp)) {
                 Text("Testar atividade agora", fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(6.dp))
@@ -1912,3 +2083,4 @@ private fun PinField(label: String, value: String, onValueChange: (String) -> Un
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
     )
 }
+

@@ -20,3 +20,8 @@ Usar materiais fixos por matéria e avaliar literalidade, ambiguidade, cobertura
 
 ## Dispositivo real
 O tablet Samsung é o ambiente final de aceitação.
+
+
+## Resposta matemática
+
+Cobrir campo “Sua resposta”, bloqueio da solução antes da tentativa, equivalência numérica e decimal, erro, avaliação indeterminada segura, persistência opcional das tentativas e leitura retrocompatível do histórico sem o campo `answers`. Confirmar também que Verdadeiro/Falso mantém o fluxo existente.

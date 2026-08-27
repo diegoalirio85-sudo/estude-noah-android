@@ -2,9 +2,9 @@
 
 ## Visão geral
 
-O caminho preparado é `Android → Firebase App Check → Cloud Run → backend → Gemini`. O aplicativo nunca recebe `GEMINI_API_KEY`, credencial de serviço ou bearer token fixo.
+O modo privado atual é `Android → Firebase Authentication → ID token → Cloud Run → validação de UID → backend → Gemini`. O aplicativo nunca recebe `GEMINI_API_KEY`, credencial de serviço ou bearer token fixo.
 
-O Firebase Admin SDK Java 9.10.0 foi avaliado, mas esse artefato não oferece a API de verificação de App Check disponível em outros Admin SDKs. Por isso, o adaptador Java segue o procedimento oficial para linguagens sem suporte direto: obtém o JWKS público rotativo em `https://firebaseappcheck.googleapis.com/v1/jwks`, limita o cache a seis horas e valida assinatura RS256, tipo JWT, issuer, expiração, audience e subject/App ID. A interface `AppCheckTokenVerifier` mantém testes e futura troca por API nativa isolados.
+Como modo alternativo futuro, o código ainda preserva suporte a App Check. O Firebase Admin SDK Java 9.10.0 não oferece a mesma API de verificação de App Check disponível em outros Admin SDKs; por isso, o adaptador Java desse modo alternativo obtém o JWKS público rotativo em `https://firebaseappcheck.googleapis.com/v1/jwks`, limita o cache a seis horas e valida assinatura RS256, tipo JWT, issuer, expiração, audience e subject/App ID. A interface `AppCheckTokenVerifier` mantém essa implementação isolada do modo privado atual.
 
 ## Endpoints
 
@@ -12,7 +12,7 @@ Público:
 
 - `GET /health`.
 
-Protegidos por `X-Firebase-AppCheck`:
+Protegidos por `Authorization: Bearer <Firebase ID token>` no modo `firebase_auth`:
 
 - `POST /v1/materials/ppt/extract`;
 - `POST /v1/materials/youtube/analyze`;
@@ -21,36 +21,37 @@ Protegidos por `X-Firebase-AppCheck`:
 - `POST /v1/activities/from-text`;
 - `POST /v1/activities/from-ppt`.
 
-Token ausente ou inválido recebe `401`; excesso de chamadas recebe `429`. A validação acontece antes do controller, da extração e do Gemini.
+Token ausente ou inválido recebe `401`; UID fora da allowlist recebe `403`; allowlist vazia falha fechada; excesso de chamadas recebe `429`. A validação acontece antes do controller, da extração e do Gemini.
 
 ## 1. Projeto Google Cloud e Firebase
 
 1. Crie ou selecione um projeto Google Cloud.
 2. Ative Firebase nesse mesmo projeto.
-3. Anote o número numérico do projeto; ele será `FIREBASE_PROJECT_NUMBER`.
+3. Anote o ID do projeto para `FIREBASE_PROJECT_ID`; o número numérico do projeto só é necessário se o modo alternativo `app_check` for adotado.
 4. Não baixe nem coloque JSON de service account no repositório ou container.
 
 ## 2. Registrar o Android
 
 1. Registre o package `com.estudenoah.app` no Firebase Console.
-2. Cadastre o SHA-256 do certificado que assina cada variante distribuída.
+2. Cadastre o SHA-256 do certificado das variantes que precisarem de recursos Firebase associados ao certificado, especialmente se App Check/Play Integrity voltar a ser usado.
 3. Baixe o `google-services.json` gerado pelo console somente depois de conferir projeto e package.
 
 O `google-services.json` contém identificadores públicos de configuração, não uma chave privada. O arquivo real validado para `comestudenoahapp` e `com.estudenoah.app` é versionado em `app/google-services.json`; credenciais administrativas nunca devem ser incluídas nele.
 
-## 3. App Check e APK fora da Play Store
+## 3. Firebase Authentication privado
 
-Para produção, registre Play Integrity no App Check e associe o SHA-256 correto. O App Check aceita distribuição fora da Play Store quando as opções de reconhecimento/licenciamento forem configuradas para esse canal; não exija `PLAY_RECOGNIZED` ou `LICENSED` para um APK exclusivamente sideloaded. Avalie o nível de integridade do dispositivo conforme os aparelhos reais.
+1. No Firebase Console, habilite Authentication → Email/Password.
+2. Crie manualmente a conta do responsável; o Android não oferece cadastro público.
+3. Copie o UID da conta e configure-o em `ALLOWED_FIREBASE_UIDS` no Cloud Run. Separe múltiplos UIDs por vírgula.
+4. Use `BACKEND_AUTH_MODE=firebase_auth` e `FIREBASE_PROJECT_ID=comestudenoahapp`.
 
-Para debug, a variante `debug` usa `DebugAppCheckProviderFactory`. Instale o APK, capture o debug token exibido pelo SDK e cadastre-o no Firebase Console. Esse token é credencial de teste: não o versione nem o use em produção. A variante `release` usa somente Play Integrity.
-
-Não habilite enforcement antes de registrar o app, os certificados e os dispositivos de teste. O backend, porém, deve permanecer protegido antes de ser exposto publicamente.
+O Firebase Admin SDK 9.10.0 valida assinatura, issuer, audience, expiração e UID usando Application Default Credentials da identidade do Cloud Run e o project ID configurado explicitamente. Não use JSON de service account. App Check permanece disponível como modo futuro `app_check`, mas não deve ser exigido simultaneamente no modo privado.
 
 ## 4. Configuração Android
 
-O módulo Android aplica o plugin oficial `com.google.gms.google-services` e processa `app/google-services.json`. A configuração preserva o package `com.estudenoah.app`; nenhum fluxo atual chama o backend nesta fase.
+O módulo Android aplica o plugin oficial `com.google.gms.google-services` e processa `app/google-services.json`. A configuração preserva o package `com.estudenoah.app`; o fluxo D1B1 chama o backend privado para documentos, PowerPoint legado e YouTube.
 
-`FirebaseAppCheckTokenProvider` prepara a obtenção futura de token. A chamada remota deverá enviar o valor exclusivamente no header `X-Firebase-AppCheck`, nunca na URL ou em logs.
+`FirebaseAuth` mantém a sessão do responsável. A senha é entregue diretamente ao SDK e nunca é salva pelo app. Cada chamada obtém um ID token e o envia exclusivamente em `Authorization`, nunca na URL ou em logs.
 
 ## 5. Secret Manager
 
@@ -75,20 +76,13 @@ Implante usando identidade de workload e a porta fornecida pelo Cloud Run:
 gcloud run deploy estude-noah-backend \
   --image REGION-docker.pkg.dev/PROJECT_ID/REPOSITORY/estude-noah-backend \
   --region REGION \
-  --set-env-vars APP_CHECK_ENABLED=true,FIREBASE_PROJECT_NUMBER=PROJECT_NUMBER,RATE_LIMIT_REQUESTS_PER_MINUTE=30 \
+  --set-env-vars BACKEND_AUTH_MODE=firebase_auth,FIREBASE_PROJECT_ID=comestudenoahapp,ALLOWED_FIREBASE_UIDS=UID_AUTORIZADO,RATE_LIMIT_REQUESTS_PER_MINUTE=30 \
   --set-secrets GEMINI_API_KEY=GEMINI_API_KEY:latest
 ```
 
-Opcionalmente defina `FIREBASE_APP_IDS` como lista separada por vírgulas para aceitar somente os App IDs registrados. Sem essa allowlist, ainda são exigidos assinatura, issuer e audience do projeto.
+`FIREBASE_PROJECT_ID` e `ALLOWED_FIREBASE_UIDS` são obrigatórios no modo atual. O project ID é aplicado explicitamente ao `FirebaseOptions`; não se depende de metadata do Cloud Run para descobri-lo. Se qualquer configuração obrigatória estiver ausente, os endpoints protegidos falham de forma segura.
 
-Permissões mínimas:
-
-- executar Cloud Run;
-- ler a imagem do Artifact Registry;
-- acessar somente o segredo Gemini;
-- `roles/firebaseappcheck.tokenVerifier` quando recursos de verificação/consumo online forem adotados.
-
-Não use arquivo de service account; o serviço usa a identidade atribuída pelo Cloud Run.
+Permissões mínimas da identidade do serviço devem seguir o princípio do menor privilégio. Para este backend, mantenha apenas as permissões efetivamente exigidas pelos recursos usados, incluindo acesso ao segredo Gemini e às operações de infraestrutura necessárias ao ambiente. Não use arquivo de service account; o serviço usa a identidade atribuída pelo Cloud Run.
 
 ## 7. Limites e logs
 
@@ -99,7 +93,7 @@ Não use arquivo de service account; o serviço usa a identidade atribuída pelo
 
 O limitador é em memória e por instância. Escala horizontal não compartilha contadores; Cloud Armor/API Gateway ou armazenamento distribuído é uma evolução futura. Upload chunked sem `Content-Length` continua limitado pelo parser multipart, enquanto JSON chunked depende dos limites do proxy/Cloud Run e deve ser reforçado na borda.
 
-Logs incluem somente request ID, método, endpoint, status, duração e tamanho declarado. Não registram App Check token, chave Gemini, headers completos ou conteúdo escolar.
+Logs incluem somente request ID, método, endpoint, status, duração e tamanho declarado. Não registram Firebase ID token, chave Gemini, headers completos ou conteúdo escolar.
 
 ## 8. Testes de implantação
 
@@ -115,12 +109,11 @@ Endpoint protegido sem token deve retornar `401`:
 curl -i -X POST https://SERVICE_URL/v1/materials/text/analyze -H 'Content-Type: application/json' -d '{}'
 ```
 
-Com um token obtido pelo SDK Android configurado, envie `X-Firebase-AppCheck: TOKEN` e confirme que a requisição prossegue para a validação do payload. Nunca cole o token em issue, log ou artifact.
+Depois de conectar a conta na Área dos Pais, confirme pelo Android que uma atividade chega ao backend. Nunca copie o ID token para issue, log ou artifact.
 
 ## 9. Rollback
 
 1. Liste revisões com `gcloud run revisions list`.
 2. Direcione 100% do tráfego à última revisão saudável.
 3. Mantenha `GEMINI_API_KEY` no Secret Manager; revogue/rotacione somente se houver suspeita de exposição.
-4. Não desative App Check como correção permanente. Para diagnóstico controlado, restrinja acesso ao serviço antes de qualquer desativação temporária.
-
+4. `BACKEND_AUTH_MODE=none` é bypass de teste e não deve ser usado em serviço acessível; para diagnóstico, use ambiente isolado sem tráfego real.

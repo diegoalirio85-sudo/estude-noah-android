@@ -1,6 +1,6 @@
 # Análise pedagógica de documentos
 
-## Fluxos D1A
+## Fluxos D1A/D1B1
 
 Documentos cujo texto já é extraído com segurança no Android seguem:
 
@@ -8,9 +8,9 @@ Documentos cujo texto já é extraído com segurança no Android seguem:
 
 O PowerPoint binário legado é a exceção:
 
-`.ppt → upload efêmero → LegacyPptExtractor/HSLF → texto → análise pedagógica → C2.1 → atividade`
+`.ppt/.pps → upload efêmero → LegacyPptExtractor/HSLF → texto → análise pedagógica → C2.1 → atividade`
 
-A D1A não conecta o Android. Essa integração pertence à D1B.
+A D1A preparou os contratos sem conexão Android. A D1B1 conecta esses pipelines ao cliente Android privado por Firebase Authentication, sem fallback silencioso para geração local.
 
 ## Endpoints
 
@@ -26,7 +26,7 @@ Recebe o mesmo JSON, executa a análise documental e delega a geração ao servi
 
 ### `POST /v1/activities/from-ppt`
 
-Recebe multipart com `file`, `subject` e `grade`. O arquivo precisa terminar em `.ppt`. O endpoint reutiliza `LegacyPptExtractor`; PPT inválido, corrompido, protegido ou sem texto suficiente falha de forma controlada.
+Recebe multipart com `file`, `subject` e `grade`. O arquivo precisa terminar em `.ppt` ou `.pps`; `.ppsx` não é aceito pelo HSLF. O endpoint reutiliza `LegacyPptExtractor`; PPT/PPS inválido, corrompido, protegido ou sem texto suficiente falha de forma controlada.
 
 ## Fidelidade e Structured Output
 
@@ -47,6 +47,8 @@ Chunking semântico por seção/página, análise parcial e consolidação dever
 
 O pipeline é stateless: `request → processamento → response`. Não há banco nem armazenamento permanente. O texto escolar integral e a chave Gemini não são registrados. `GEMINI_API_KEY` permanece exclusiva do backend e Structured Output é solicitado com `store=false`.
 
-## E2E futuro
+Os endpoints de processamento são protegidos no modo privado atual por Firebase Authentication e allowlist de UID. O conteúdo extraído é intermediário: pode existir em memória durante o processamento, mas não é exibido como etapa de UX nem persistido integralmente na atividade preparada.
 
-Um workflow manual poderá enviar texto extraído de um PDF artificial ou público para `from-text`, guardar análise/atividade como artifact e executar validações pedagógicas sem incluir material escolar privado ou credenciais.
+## E2E
+
+Testes E2E devem usar material artificial ou público, guardar somente artifacts de diagnóstico adequados e nunca incluir material escolar privado, Firebase ID token ou credenciais.
