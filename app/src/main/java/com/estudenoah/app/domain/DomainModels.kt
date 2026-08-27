@@ -14,11 +14,16 @@ internal data class Question(
     val options: List<String>,
     val correctIndex: Int,
     val explanation: String,
-    val mathAnswer: String? = null,
+    var mathAnswer: String? = null,
     val solutionSteps: List<String> = emptyList()
 ) {
-    val isMathProblem: Boolean
-        get() = mathAnswer?.trim()?.takeUnless { it.equals("null", ignoreCase = true) }.isNullOrBlank().not()
+    init {
+        mathAnswer = mathAnswer
+            ?.trim()
+            ?.takeUnless { it.isBlank() || it.equals("null", ignoreCase = true) }
+    }
+
+    val isMathProblem: Boolean get() = mathAnswer != null
 }
 
 internal data class CustomQuestion(
