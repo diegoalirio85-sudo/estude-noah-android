@@ -30,13 +30,6 @@ android {
         }
     }
 
-    buildTypes {
-        create("sideload") {
-            initWith(getByName("debug"))
-            signingConfig = signingConfigs.getByName("debug")
-        }
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
@@ -75,4 +68,3 @@ dependencies {
     testImplementation("org.json:json:20250517")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }
-
