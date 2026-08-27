@@ -17,7 +17,8 @@ internal data class Question(
     val mathAnswer: String? = null,
     val solutionSteps: List<String> = emptyList()
 ) {
-    val isMathProblem: Boolean get() = mathAnswer != null
+    val isMathProblem: Boolean
+        get() = mathAnswer?.trim()?.takeUnless { it.equals("null", ignoreCase = true) }.isNullOrBlank().not()
 }
 
 internal data class CustomQuestion(
