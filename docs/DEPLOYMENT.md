@@ -4,7 +4,7 @@
 
 O modo privado atual é `Android → Firebase Authentication → ID token → Cloud Run → validação de UID → backend → Gemini`. O aplicativo nunca recebe `GEMINI_API_KEY`, credencial de serviço ou bearer token fixo.
 
-O Firebase Admin SDK Java 9.10.0 foi avaliado, mas esse artefato não oferece a API de verificação de App Check disponível em outros Admin SDKs. Por isso, o adaptador Java segue o procedimento oficial para linguagens sem suporte direto: obtém o JWKS público rotativo em `https://firebaseappcheck.googleapis.com/v1/jwks`, limita o cache a seis horas e valida assinatura RS256, tipo JWT, issuer, expiração, audience e subject/App ID. A interface `AppCheckTokenVerifier` mantém testes e futura troca por API nativa isolados.
+Como modo alternativo futuro, o código ainda preserva suporte a App Check. O Firebase Admin SDK Java 9.10.0 não oferece a mesma API de verificação de App Check disponível em outros Admin SDKs; por isso, o adaptador Java desse modo alternativo obtém o JWKS público rotativo em `https://firebaseappcheck.googleapis.com/v1/jwks`, limita o cache a seis horas e valida assinatura RS256, tipo JWT, issuer, expiração, audience e subject/App ID. A interface `AppCheckTokenVerifier` mantém essa implementação isolada do modo privado atual.
 
 ## Endpoints
 
@@ -27,13 +27,13 @@ Token ausente ou inválido recebe `401`; UID fora da allowlist recebe `403`; all
 
 1. Crie ou selecione um projeto Google Cloud.
 2. Ative Firebase nesse mesmo projeto.
-3. Anote o número numérico do projeto; ele será `FIREBASE_PROJECT_NUMBER`.
+3. Anote o ID do projeto para `FIREBASE_PROJECT_ID`; o número numérico do projeto só é necessário se o modo alternativo `app_check` for adotado.
 4. Não baixe nem coloque JSON de service account no repositório ou container.
 
 ## 2. Registrar o Android
 
 1. Registre o package `com.estudenoah.app` no Firebase Console.
-2. Cadastre o SHA-256 do certificado que assina cada variante distribuída.
+2. Cadastre o SHA-256 do certificado das variantes que precisarem de recursos Firebase associados ao certificado, especialmente se App Check/Play Integrity voltar a ser usado.
 3. Baixe o `google-services.json` gerado pelo console somente depois de conferir projeto e package.
 
 O `google-services.json` contém identificadores públicos de configuração, não uma chave privada. O arquivo real validado para `comestudenoahapp` e `com.estudenoah.app` é versionado em `app/google-services.json`; credenciais administrativas nunca devem ser incluídas nele.
@@ -45,11 +45,11 @@ O `google-services.json` contém identificadores públicos de configuração, n�
 3. Copie o UID da conta e configure-o em `ALLOWED_FIREBASE_UIDS` no Cloud Run. Separe múltiplos UIDs por vírgula.
 4. Use `BACKEND_AUTH_MODE=firebase_auth` e `FIREBASE_PROJECT_ID=comestudenoahapp`.
 
-O Firebase Admin SDK 9.10.0 valida assinatura, issuer, audience, expiração e UID usando Application Default Credentials da service account do Cloud Run. Não use JSON de service account. App Check permanece disponível como modo futuro `app_check`, mas não deve ser exigido simultaneamente no modo privado.
+O Firebase Admin SDK 9.10.0 valida assinatura, issuer, audience, expiração e UID usando Application Default Credentials da identidade do Cloud Run e o project ID configurado explicitamente. Não use JSON de service account. App Check permanece disponível como modo futuro `app_check`, mas não deve ser exigido simultaneamente no modo privado.
 
 ## 4. Configuração Android
 
-O módulo Android aplica o plugin oficial `com.google.gms.google-services` e processa `app/google-services.json`. A configuração preserva o package `com.estudenoah.app`; nenhum fluxo atual chama o backend nesta fase.
+O módulo Android aplica o plugin oficial `com.google.gms.google-services` e processa `app/google-services.json`. A configuração preserva o package `com.estudenoah.app`; o fluxo D1B1 chama o backend privado para documentos, PowerPoint legado e YouTube.
 
 `FirebaseAuth` mantém a sessão do responsável. A senha é entregue diretamente ao SDK e nunca é salva pelo app. Cada chamada obtém um ID token e o envia exclusivamente em `Authorization`, nunca na URL ou em logs.
 
@@ -82,14 +82,7 @@ gcloud run deploy estude-noah-backend \
 
 `FIREBASE_PROJECT_ID` e `ALLOWED_FIREBASE_UIDS` são obrigatórios no modo atual. O project ID é aplicado explicitamente ao `FirebaseOptions`; não se depende de metadata do Cloud Run para descobri-lo. Se qualquer configuração obrigatória estiver ausente, os endpoints protegidos falham de forma segura.
 
-Permissões mínimas:
-
-- executar Cloud Run;
-- ler a imagem do Artifact Registry;
-- acessar somente o segredo Gemini;
-- permissões Firebase Auth necessárias para a identidade do backend verificar ID tokens usando ADC.
-
-Não use arquivo de service account; o serviço usa a identidade atribuída pelo Cloud Run.
+Permissões mínimas da identidade do serviço devem seguir o princípio do menor privilégio. Para este backend, mantenha apenas as permissões efetivamente exigidas pelos recursos usados, incluindo acesso ao segredo Gemini e às operações de infraestrutura necessárias ao ambiente. Não use arquivo de service account; o serviço usa a identidade atribuída pelo Cloud Run.
 
 ## 7. Limites e logs
 
@@ -123,5 +116,4 @@ Depois de conectar a conta na Área dos Pais, confirme pelo Android que uma ativ
 1. Liste revisões com `gcloud run revisions list`.
 2. Direcione 100% do tráfego à última revisão saudável.
 3. Mantenha `GEMINI_API_KEY` no Secret Manager; revogue/rotacione somente se houver suspeita de exposição.
-4. Não troque `BACKEND_AUTH_MODE` por `none` em produção. Para diagnóstico, use ambiente isolado sem tráfego real.
-
+4. `BACKEND_AUTH_MODE=none` é bypass de teste e não deve ser usado em serviço acessível; para diagnóstico, use ambiente isolado sem tráfego real.
