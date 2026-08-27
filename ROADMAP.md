@@ -16,7 +16,7 @@ Separar UI, domínio, armazenamento, materiais, geração e histórico.
 Pipeline: extração → análise → objetivo → temas → conceitos → relações → equívocos → geração → validação → revisão.
 
 ## Fase D — Materiais multimodais
-Texto, voz, PDF, DOCX, ODT, PPTX, DOC, PPT, MP3, MP4 e AVI.
+Texto, voz, PDF, DOCX, ODT, PPTX, DOC, PPT, PPS, MP3, MP4 e AVI.
 
 ### D0 — Home definitiva de cinco áreas
 - [x] estrutura responsiva para tablet em paisagem e retrato;
@@ -30,9 +30,9 @@ Texto, voz, PDF, DOCX, ODT, PPTX, DOC, PPT, MP3, MP4 e AVI.
 ### D1A — Pipeline pedagógico para documentos
 - [x] análise estruturada de texto documental com fidelidade à fonte;
 - [x] orquestração texto → C2.1 → atividade;
-- [x] orquestração `.ppt` → HSLF → C2.1 → atividade;
+- [x] orquestração `.ppt`/`.pps` → HSLF → C2.1 → atividade;
 - [x] limites explícitos sem truncamento e preparação para chunking;
-- [x] D1B1: conectar a criação manual Android aos pipelines documentais e YouTube protegidos por App Check;
+- [x] D1B1: conectar a criação manual Android aos pipelines documentais e YouTube protegidos por Firebase Authentication;
 - [ ] adicionar E2E manual com PDF artificial ou público.
 
 ## Fase E — Área dos Pais em Sites
@@ -46,4 +46,3 @@ Identificar dificuldades, ajustar dificuldade, repetir habilidades em novos cont
 
 ## Fase H — Automação escolar
 Somente após o núcleo pedagógico estar estável: agenda, AVA, materiais do dia e preparação automática.
-
