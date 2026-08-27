@@ -83,10 +83,11 @@ internal class EstudeNoahBackendClient(
     suspend fun fromPpt(fileName: String, bytes: ByteArray, subject: String, grade: String): BackendGeneratedActivity {
         val boundary = "EstudeNoah-${UUID.randomUUID()}"
         val crlf = "\r\n"
+        val safeFileName = normalizeLegacyPptFileName(fileName)
         val prefix = buildString {
             append("--$boundary$crlf")
             append("Content-Disposition: form-data; name=\"file\"; filename=\"")
-            append(fileName.replace("\"", "_"))
+            append(safeFileName)
             append("\"$crlf")
             append("Content-Type: application/vnd.ms-powerpoint$crlf$crlf")
         }.toByteArray(StandardCharsets.UTF_8)
@@ -153,6 +154,8 @@ internal class EstudeNoahBackendClient(
     private fun parseActivity(raw: String): BackendGeneratedActivity {
         try {
             val root = JSONObject(raw)
+            val activityType = root.requireString("activityType")
+            require(activityType == "TRUE_FALSE" || activityType == "MATH_PROBLEMS") { "Unsupported activity type." }
             val themes = root.requireArray("themes").objects().map { theme ->
                 BackendTheme(theme.requireString("name"), theme.requireArray("questions").objects().map { question ->
                     BackendQuestion(
@@ -171,7 +174,7 @@ internal class EstudeNoahBackendClient(
             return BackendGeneratedActivity(
                 subject = root.requireString("subject"),
                 grade = root.requireString("grade"),
-                activityType = root.requireString("activityType"),
+                activityType = activityType,
                 themes = themes,
                 warnings = root.optJSONArray("warnings")?.strings().orEmpty()
             )
@@ -183,9 +186,21 @@ internal class EstudeNoahBackendClient(
     }
 }
 
+private fun normalizeLegacyPptFileName(fileName: String): String {
+    val sanitized = fileName.trim()
+        .replace('\r', '_')
+        .replace('\n', '_')
+        .replace('"', '_')
+        .ifBlank { "material" }
+    return if (sanitized.endsWith(".ppt", ignoreCase = true) || sanitized.endsWith(".pps", ignoreCase = true)) {
+        sanitized
+    } else {
+        "$sanitized.ppt"
+    }
+}
+
 private fun JSONObject.requireString(name: String): String = getString(name).also { require(it.isNotBlank()) }
 private fun JSONObject.requireArray(name: String): JSONArray = getJSONArray(name)
 private fun JSONObject.optNullableString(name: String): String? = if (has(name) && !isNull(name)) optString(name).takeIf { it.isNotBlank() } else null
 private fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
 private fun JSONArray.strings(): List<String> = (0 until length()).map { getString(it) }
-
