@@ -26,23 +26,32 @@ public final class FirebaseAuthenticationFilter extends OncePerRequestFilter {
     private final FirebaseAuthTokenVerifier verifier;
     private final Set<String> allowedUids;
     private final String authMode;
+    private final boolean allowNone;
     private final InMemoryRequestRateLimiter rateLimiter;
 
     public FirebaseAuthenticationFilter(FirebaseAuthTokenVerifier verifier,
             @Value("${security.firebase.allowed-uids:}") String allowedUids,
             @Value("${security.auth.mode:firebase_auth}") String authMode,
+            @Value("${security.auth.allow-none:false}") boolean allowNone,
             @Value("${security.rate-limit.requests-per-minute:30}") int requestsPerMinute) {
         this.verifier = verifier;
         this.allowedUids = Arrays.stream(allowedUids.split(",")).map(String::trim).filter(s -> !s.isBlank()).collect(Collectors.toUnmodifiableSet());
-        this.authMode = authMode;
+        this.authMode = authMode == null ? "" : authMode.trim();
+        this.allowNone = allowNone;
         this.rateLimiter = new InMemoryRequestRateLimiter(requestsPerMinute);
     }
 
     @Override protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !"firebase_auth".equals(authMode) || !"POST".equals(request.getMethod()) || !PROTECTED_POST_PATHS.contains(request.getRequestURI());
+        if (!isProtectedRequest(request)) return true;
+        if ("app_check".equals(authMode)) return true;
+        return "none".equals(authMode) && allowNone;
     }
 
     @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
+        if (!"firebase_auth".equals(authMode)) {
+            reject(response, 503, "backend_auth_mode_invalid", "Backend authentication mode is not safely configured.");
+            return;
+        }
         if (allowedUids.isEmpty()) { reject(response, 503, "firebase_uid_allowlist_empty", "Firebase UID allowlist is not configured."); return; }
         String header = request.getHeader(AUTHORIZATION);
         if (header == null || !header.startsWith("Bearer ") || header.substring(7).isBlank()) { reject(response, 401, "firebase_auth_token_missing", "Firebase ID token is required."); return; }
@@ -59,9 +68,12 @@ public final class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         }
     }
 
+    private static boolean isProtectedRequest(HttpServletRequest request) {
+        return "POST".equals(request.getMethod()) && PROTECTED_POST_PATHS.contains(request.getRequestURI());
+    }
+
     private static void reject(HttpServletResponse response, int status, String code, String message) throws IOException {
         response.setStatus(status); response.setContentType("application/json"); response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.getWriter().write("{\"code\":\"" + code + "\",\"message\":\"" + message + "\"}");
     }
 }
-
