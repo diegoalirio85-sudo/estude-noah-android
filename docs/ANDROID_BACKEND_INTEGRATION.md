@@ -15,6 +15,14 @@ O APK não contém chave Gemini, service account, segredo Firebase Admin ou toke
 
 A série temporária centralizada é `4º Ano Ensino Fundamental`.
 
+## Reprodução de YouTube e conta Premium
+
+A reprodução para o aluno é separada da análise pedagógica. Quando uma `PreparedActivity` foi criada a partir de uma URL HTTPS oficial do YouTube, a Home mostra **Assistir vídeo no YouTube**. O Android tenta abrir primeiro o pacote oficial `com.google.android.youtube`; se ele não estiver instalado, usa o resolvedor padrão do sistema como fallback.
+
+O Estude, Noah! não recebe senha, cookie, token OAuth ou acesso à biblioteca da conta Google/YouTube. Os benefícios de uma conta YouTube Premium conectada ao tablet permanecem administrados exclusivamente pelo aplicativo oficial do YouTube. O app apenas entrega a URL pública por `ACTION_VIEW`.
+
+A validação local aceita apenas HTTPS nos hosts `youtube.com`, `www.youtube.com`, `m.youtube.com` e `youtu.be`, rejeitando domínios parecidos, credenciais embutidas e esquemas não web. Essa validação protege a ação de reprodução e não altera o pipeline Gemini já existente.
+
 ## Firebase Authentication e retry
 
 Cada endpoint protegido recebe `Authorization: Bearer <Firebase ID token>` obtido imediatamente antes da requisição. O Firebase SDK gerencia a sessão; o aplicativo não salva senha ou token. Em `401` com código `firebase_auth_token_invalid`, há somente uma nova tentativa com `getIdToken(true)`. Outros erros não geram loop.
@@ -39,7 +47,8 @@ Se o backend falhar, o aplicativo não chama silenciosamente `MaterialQuestionGe
 2. Na Área dos Pais, abra **Conta do backend** e entre com a conta criada pelo responsável.
 3. Confirme internet e abra a criação manual.
 4. Teste texto, um documento extraído, um `.ppt` ou `.pps` isolado e uma URL YouTube.
-5. Confirme atividade preparada, execução, resultado e histórico.
-6. Simule ausência de rede e confirme que nenhuma atividade local falsa é criada.
+5. Para YouTube, salve a atividade preparada, volte à Home e toque em **Assistir vídeo no YouTube**; confirme que o app oficial abre na conta esperada e que **Fazer atividade preparada** continua independente.
+6. Confirme atividade preparada, execução, resultado e histórico.
+7. Simule ausência de rede e confirme que nenhuma atividade local falsa é criada.
 
 CI usa transportes e tokens falsos; não chama Cloud Run, Firebase ou Gemini reais.
