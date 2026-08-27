@@ -45,6 +45,10 @@ internal class BackendException(
         code == "firebase_login_required" -> "Peça ao responsável para conectar a Conta do backend na Área dos Pais."
         code == "timeout" -> "A análise demorou mais que o esperado. Tente novamente."
         code == "invalid_json" || code == "incompatible_response" -> "O servidor retornou uma resposta incompatível. Tente novamente."
+        code == "material_url_login_required" -> "Esse link depende do login do AVA. Por enquanto, abra o recurso no AVA e cole o link público de destino."
+        code == "material_url_untrusted_host" -> "Esse site ainda não está autorizado para resolução automática de links escolares."
+        code == "youtube_not_found_in_material_url" -> "Não encontrei um vídeo público do YouTube nessa página."
+        code == "material_url_unsupported_content" -> "Esse link escolar não aponta para uma página pública compatível nesta etapa."
         else -> when (status) {
         null -> "Sem conexão com o servidor. Verifique a internet e tente novamente."
         400 -> "Não foi possível analisar os dados enviados. Confira o material."
@@ -59,4 +63,3 @@ internal class BackendException(
         }
     }
 }
-
