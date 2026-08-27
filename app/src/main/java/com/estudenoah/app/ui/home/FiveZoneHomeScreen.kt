@@ -23,11 +23,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.estudenoah.app.domain.HistoryEntry
 import com.estudenoah.app.domain.PreparedActivity
+import com.estudenoah.app.youtube.YoutubePlaybackLauncher
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -52,6 +54,7 @@ internal fun FiveZoneHomeScreen(
     onPrepared: (PreparedActivity) -> Unit,
     onMaterial: (TodayMaterial) -> Unit
 ) {
+    val context = LocalContext.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
         LazyColumn(
@@ -88,12 +91,27 @@ internal fun FiveZoneHomeScreen(
                     Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Central de estudos", color = Blue, fontWeight = FontWeight.Bold)
                         Text("O que vamos aprender agora?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-                        preparedActivity?.let {
+                        preparedActivity?.let { activity ->
+                            val youtubeUrl = YoutubePlaybackLauncher.supportedUrl(activity.sourceText)
                             Card(colors = CardDefaults.cardColors(containerColor = GreenSoft)) {
                                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
                                     Text("Atividade preparada", color = Green, fontWeight = FontWeight.Bold)
-                                    Text(it.title, fontWeight = FontWeight.Bold)
-                                    Button(onClick = { onPrepared(it) }, modifier = Modifier.fillMaxWidth()) { Text("Fazer atividade preparada") }
+                                    Text(activity.title, fontWeight = FontWeight.Bold)
+                                    if (youtubeUrl != null) {
+                                        OutlinedButton(
+                                            onClick = { YoutubePlaybackLauncher.open(context, youtubeUrl) },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text("▶ Assistir vídeo no YouTube")
+                                        }
+                                        Text(
+                                            "O vídeo abre no app oficial do YouTube e usa a conta conectada neste tablet.",
+                                            color = Muted,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                    Button(onClick = { onPrepared(activity) }, modifier = Modifier.fillMaxWidth()) { Text("Fazer atividade preparada") }
                                 }
                             }
                         }
