@@ -34,7 +34,10 @@ internal object HistoryJsonCodec {
                         put(JSONObject()
                             .put("questionId", answer.questionId)
                             .put("answer", answer.answer)
-                            .put("correct", answer.correct))
+                            .put("correct", answer.correct)
+                            .put("prompt", answer.prompt)
+                            .put("correctAnswer", answer.correctAnswer)
+                            .put("explanation", answer.explanation))
                     }
                 }))
         }
@@ -46,7 +49,10 @@ internal object HistoryJsonCodec {
             add(StudentAnswerRecord(
                 questionId = answer.optString("questionId", ""),
                 answer = answer.optString("answer", ""),
-                correct = if (answer.has("correct") && !answer.isNull("correct")) answer.getBoolean("correct") else null
+                correct = if (answer.has("correct") && !answer.isNull("correct")) answer.getBoolean("correct") else null,
+                prompt = answer.optString("prompt", ""),
+                correctAnswer = answer.optString("correctAnswer", ""),
+                explanation = answer.optString("explanation", "")
             ))
         }
     }
