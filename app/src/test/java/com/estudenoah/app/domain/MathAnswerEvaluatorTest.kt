@@ -23,5 +23,6 @@ class MathAnswerEvaluatorTest {
     @Test fun solutionIsHiddenBeforeAttempt() { assertFalse(MathAnswerEvaluator.shouldShowSolution(false)); assertTrue(MathAnswerEvaluator.shouldShowSolution(true)) }
     @Test fun historyModelRemainsCompatibleAndRecordsStudentAnswer() { val legacy=HistoryEntry("Matemática",1,1,1L); assertTrue(legacy.answers.isEmpty()); val recorded=legacy.copy(answers=listOf(StudentAnswerRecord("q1","24",true))); assertEquals("24",recorded.answers.single().answer); assertEquals(true,recorded.answers.single().correct) }
     @Test fun trueFalseQuestionRemainsNonMath() { val question=Question("q","A água ferve.",listOf("Verdadeiro","Falso"),0,"Explicação"); assertFalse(question.isMathProblem); assertEquals(listOf("Verdadeiro","Falso"),question.options) }
-    @Test fun serializedNullDoesNotTurnQuestionIntoMathProblem() { val question=Question("q","A água ferve.",listOf("Verdadeiro","Falso"),0,"Explicação",mathAnswer="null"); assertFalse(question.isMathProblem) }
+    @Test fun serializedNullIsSanitizedAtModelBoundary() { val question=Question("q","A água ferve.",listOf("Verdadeiro","Falso"),0,"Explicação",mathAnswer=" null "); assertNull(question.mathAnswer); assertFalse(question.isMathProblem) }
+    @Test fun blankMathAnswerIsSanitizedAtModelBoundary() { val question=Question("q","A água ferve.",listOf("Verdadeiro","Falso"),0,"Explicação",mathAnswer="   "); assertNull(question.mathAnswer); assertFalse(question.isMathProblem) }
 }
