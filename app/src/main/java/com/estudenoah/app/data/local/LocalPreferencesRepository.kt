@@ -9,6 +9,11 @@ import com.estudenoah.app.domain.Subject
 import com.estudenoah.app.vieira.DailyLessonPlan
 import com.estudenoah.app.vieira.DailyLessonPlanHistory
 import com.estudenoah.app.vieira.DailyLessonPlanJsonCodec
+import com.estudenoah.app.vieira.HomeworkCompletion
+import com.estudenoah.app.vieira.HomeworkCompletionHistory
+import com.estudenoah.app.vieira.HomeworkCompletionJsonCodec
+import com.estudenoah.app.vieira.HomeworkCompletionSource
+import com.estudenoah.app.vieira.LessonClass
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -172,6 +177,32 @@ internal class LocalPreferencesRepository(context: Context) {
         val updated = DailyLessonPlanHistory.upsert(loadDailyLessonPlans(), plan)
         preferences.edit()
             .putString(LocalPersistenceContract.DAILY_LESSON_PLANS_KEY, DailyLessonPlanJsonCodec.encodePlans(updated))
+            .apply()
+    }
+
+    fun loadHomeworkCompletions(date: String): List<HomeworkCompletion> {
+        val raw = preferences.getString(LocalPersistenceContract.HOMEWORK_COMPLETIONS_KEY, "[]") ?: "[]"
+        return HomeworkCompletionJsonCodec.decode(raw).filter { it.date == date }
+    }
+
+    fun setHomeworkCompletion(
+        date: String,
+        lesson: LessonClass,
+        completed: Boolean,
+        source: HomeworkCompletionSource = HomeworkCompletionSource.MANUAL,
+        now: Long = System.currentTimeMillis()
+    ) {
+        val raw = preferences.getString(LocalPersistenceContract.HOMEWORK_COMPLETIONS_KEY, "[]") ?: "[]"
+        val updated = HomeworkCompletionHistory.set(
+            existing = HomeworkCompletionJsonCodec.decode(raw),
+            date = date,
+            lesson = lesson,
+            completed = completed,
+            now = now,
+            source = source
+        )
+        preferences.edit()
+            .putString(LocalPersistenceContract.HOMEWORK_COMPLETIONS_KEY, HomeworkCompletionJsonCodec.encode(updated))
             .apply()
     }
 

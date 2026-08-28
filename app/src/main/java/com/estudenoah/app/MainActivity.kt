@@ -678,25 +678,34 @@ private fun EstudeNoahApp() {
 
     Surface(modifier = Modifier.fillMaxSize(), color = Cream) {
         when (screen) {
-            AppScreen.HOME -> FiveZoneHomeScreen(
-                // Reavaliado ao retornar do launcher Agenda Vieira.
-                history = localPreferences.loadHistory(),
-                preparedActivity = localPreferences.loadPreparedActivity(),
-                dailyLessonPlan = localPreferences.loadDailyLessonPlan(
-                    java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())
-                ).also { homeDataVersion },
-                onCreateActivity = { screenName = AppScreen.MATERIAL_INPUT.name },
-                onQuickPractice = { screenName = AppScreen.SUBJECTS.name },
-                onReview = { screenName = AppScreen.REVIEW.name },
-                onTrophies = { screenName = AppScreen.TROPHIES.name },
-                onHistory = { screenName = AppScreen.HISTORY.name },
-                onParents = { screenName = AppScreen.PARENT_PIN.name },
-                onPrepared = ::startPrepared,
-                onMaterial = {
-                    selectedHomeMaterial = it
-                    screenName = AppScreen.MATERIAL_DETAIL.name
-                }
-            )
+            AppScreen.HOME -> {
+                homeDataVersion // Reavaliado ao retornar do launcher Agenda Vieira ou ao concluir tarefa.
+                val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())
+                val dailyPlan = localPreferences.loadDailyLessonPlan(today)
+                FiveZoneHomeScreen(
+                    history = localPreferences.loadHistory(),
+                    preparedActivity = localPreferences.loadPreparedActivity(),
+                    dailyLessonPlan = dailyPlan,
+                    homeworkCompletions = localPreferences.loadHomeworkCompletions(today),
+                    onHomeworkCompletion = { lesson, completed ->
+                        dailyPlan?.let { plan ->
+                            localPreferences.setHomeworkCompletion(plan.date, lesson, completed)
+                            homeDataVersion++
+                        }
+                    },
+                    onCreateActivity = { screenName = AppScreen.MATERIAL_INPUT.name },
+                    onQuickPractice = { screenName = AppScreen.SUBJECTS.name },
+                    onReview = { screenName = AppScreen.REVIEW.name },
+                    onTrophies = { screenName = AppScreen.TROPHIES.name },
+                    onHistory = { screenName = AppScreen.HISTORY.name },
+                    onParents = { screenName = AppScreen.PARENT_PIN.name },
+                    onPrepared = ::startPrepared,
+                    onMaterial = {
+                        selectedHomeMaterial = it
+                        screenName = AppScreen.MATERIAL_DETAIL.name
+                    }
+                )
+            }
 
             AppScreen.SUBJECTS -> SubjectScreen(onBack = ::goHome, onSelect = ::startSubject)
 

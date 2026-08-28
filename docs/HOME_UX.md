@@ -16,6 +16,8 @@ Quando existir um Plano de Aula Vieira importado para a data atual, **Agenda de 
 
 A importação é estrutural e local. Ela não gera questões automaticamente nem envia a sessão TOTVS ao backend.
 
+Cada lição de casa permanece visível depois de concluída e pode ser marcada manualmente como feita ou desfeita. O quadro apresenta o resumo `x de y concluídas`, sem pontuação, competição ou penalidade. A conclusão é persistida localmente por uma chave estável derivada da data, aula e texto integral da tarefa; uma alteração substancial do texto produz uma chave nova e evita concluir automaticamente uma tarefa diferente.
+
 ## Responsividade
 
 Em largura de tablet/paisagem, os painéis superior e inferior aparecem em pares. Em retrato ou telas estreitas, esses painéis são empilhados. A Central de estudos permanece em destaque nos dois formatos.

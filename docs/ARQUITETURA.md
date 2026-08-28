@@ -60,6 +60,8 @@ O plano é persistido localmente por data. Reimportar a mesma data substitui o p
 
 Importar agenda não chama Gemini. O pipeline C2.1 só deve ser acionado posteriormente por escolha explícita de um material ou atividade.
 
+Conclusões de lição usam `HomeworkCompletion`, persistido separadamente do plano. `MANUAL` representa livro, caderno, MATIFIC e outras tarefas externas; `APP_ACTIVITY` fica reservado para conclusão futura comprovada dentro do próprio aplicativo. Reimportar um plano não remove conclusões cuja identidade de conteúdo permaneça igual.
+
 ## Modelo de domínio sugerido
 Material, Theme, Activity, Item e Result.
 
