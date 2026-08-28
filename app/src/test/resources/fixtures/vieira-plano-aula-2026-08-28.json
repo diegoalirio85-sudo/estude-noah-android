@@ -1,0 +1,58 @@
+{
+  "date": "2026-08-28",
+  "classes": [
+    {
+      "lessonNumber": 2,
+      "subject": "Matemática",
+      "classGroup": "4º Ano",
+      "lessonType": "Aula",
+      "startTime": "07:50",
+      "endTime": "08:40",
+      "plannedContent": "Divisão e simetria",
+      "completedContent": "MATIFIC e simetria no livro",
+      "homework": "MATIFIC + Simetria — livro págs. 90 e 91"
+    },
+    {
+      "lessonNumber": 1,
+      "subject": "Português",
+      "classGroup": "4º Ano",
+      "lessonType": "Aula",
+      "startTime": "07:00",
+      "endTime": "07:50",
+      "plannedContent": "Leitura e interpretação de imagem",
+      "completedContent": "LP - Leitura de imagem no livro págs. 184 e 185 (q. 1), 186",
+      "homework": "Leitura de imagem — concluir questões do livro"
+    },
+    {
+      "lessonNumber": 4,
+      "subject": "Inglês",
+      "classGroup": "4º Ano",
+      "lessonType": "Aula",
+      "startTime": "10:00",
+      "endTime": "10:50",
+      "plannedContent": "Vocabulary review",
+      "completedContent": "Food vocabulary"
+    },
+    {
+      "lessonNumber": 3,
+      "subject": "Geografia",
+      "classGroup": "4º Ano",
+      "lessonType": "Aula",
+      "startTime": "09:10",
+      "endTime": "10:00",
+      "plannedContent": "População brasileira",
+      "completedContent": "População e trabalho",
+      "homework": "População e trabalho — livro p. 120"
+    },
+    {
+      "lessonNumber": 5,
+      "subject": "Educação Física",
+      "classGroup": "4º Ano",
+      "lessonType": "Prática",
+      "startTime": "10:50",
+      "endTime": "11:40",
+      "plannedContent": "Jogos cooperativos",
+      "completedContent": "Circuito cooperativo"
+    }
+  ]
+}

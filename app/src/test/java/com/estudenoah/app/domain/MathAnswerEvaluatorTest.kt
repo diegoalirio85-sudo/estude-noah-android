@@ -19,6 +19,11 @@ class MathAnswerEvaluatorTest {
     @Test fun verifiedDivisionEquationIsEquivalentToExpectedUnitAnswer() { assertEquals(true, MathAnswerEvaluator.evaluate("12:4=3", "3 lápis")) }
     @Test fun verifiedDivisionEquationRejectsContradictoryUnit() { assertEquals(false, MathAnswerEvaluator.evaluate("12:4=3 borrachas", "3 lápis")) }
     @Test fun verifiedDivisionExpressionIsEquivalentToExpectedUnitAnswer() { assertEquals(true, MathAnswerEvaluator.evaluate("12÷4", "3 lápis")); assertEquals(true, MathAnswerEvaluator.evaluate("12/4=3", "3 lápis")) }
+    @Test fun spacedDivisionEquationsAreEquivalentToExpectedUnitAnswer() {
+        assertEquals(true, MathAnswerEvaluator.evaluate("12 / 4 = 3", "3 lápis"))
+        assertEquals(true, MathAnswerEvaluator.evaluate("12 ÷ 4 = 3", "3 lápis"))
+    }
+    @Test fun inconsistentDivisionEquationIsRejectedWhenEvaluable() { assertEquals(false, MathAnswerEvaluator.evaluate("12:5=3", "3 lápis")) }
     @Test fun incorrectEquationResultIsRejected() { assertEquals(false, MathAnswerEvaluator.evaluate("12:4=4", "3 lápis")) }
     @Test fun arithmeticResultDifferentFromExpectedIsRejected() { assertEquals(false, MathAnswerEvaluator.evaluate("12:3=4", "3 lápis")) }
     @Test fun numericExpectedAnswerPrefersDecimalKeyboard() { assertTrue(MathAnswerEvaluator.prefersNumericKeyboard("-24,5")); assertFalse(MathAnswerEvaluator.prefersNumericKeyboard("um meio")) }

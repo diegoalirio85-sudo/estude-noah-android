@@ -20,6 +20,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,6 +31,12 @@ import androidx.compose.ui.unit.dp
 import com.estudenoah.app.domain.HistoryEntry
 import com.estudenoah.app.domain.PreparedActivity
 import com.estudenoah.app.youtube.YoutubePlaybackLauncher
+import com.estudenoah.app.vieira.DailyLessonPlan
+import com.estudenoah.app.vieira.HomeworkCompletion
+import com.estudenoah.app.vieira.HomeworkCompletionUi
+import com.estudenoah.app.vieira.HomeworkIdentity
+import com.estudenoah.app.vieira.HomeworkProgressCalculator
+import com.estudenoah.app.vieira.LessonClass
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -45,6 +52,9 @@ private val Muted = Color(0xFF65708A)
 internal fun FiveZoneHomeScreen(
     history: List<HistoryEntry>,
     preparedActivity: PreparedActivity?,
+    dailyLessonPlan: DailyLessonPlan?,
+    homeworkCompletions: List<HomeworkCompletion>,
+    onHomeworkCompletion: (LessonClass, Boolean) -> Unit,
     onCreateActivity: () -> Unit,
     onQuickPractice: () -> Unit,
     onReview: () -> Unit,
@@ -66,9 +76,18 @@ internal fun FiveZoneHomeScreen(
             item {
                 ResponsivePair(wide,
                     first = { modifier -> ZoneCard("Agenda de hoje", "Organize o seu dia", modifier) {
-                        if (HomePreviewData.agenda.isEmpty()) {
+                        if (dailyLessonPlan == null || dailyLessonPlan.classes.isEmpty()) {
                             Text("Nenhum compromisso para hoje.", color = Muted)
-                            Text("A agenda escolar será conectada em uma próxima etapa.", color = Muted)
+                            Text("Importe o Plano de Aula no atalho Agenda Vieira.", color = Muted)
+                        } else {
+                            dailyLessonPlan.orderedClasses.forEach { lesson ->
+                                CompactItem(
+                                    eyebrow = lesson.startTime.orEmpty(),
+                                    title = lesson.subject ?: "Aula",
+                                    detail = lesson.displayContent.orEmpty(),
+                                    onClick = {}
+                                )
+                            }
                         }
                     } },
                     second = { modifier -> ZoneCard("Materiais de hoje", "Conteúdos separados para estudar", modifier) {
@@ -128,8 +147,16 @@ internal fun FiveZoneHomeScreen(
             item {
                 ResponsivePair(wide,
                     first = { modifier -> ZoneCard("Atividades de hoje", "Sugestões prontas para continuar", modifier) {
-                        HomePreviewData.activities.forEach { activity ->
-                            CompactItem(activity.subject, activity.title, activity.status, onQuickPractice)
+                        if (dailyLessonPlan == null || dailyLessonPlan.homeworkClasses.isEmpty()) {
+                            Text(HomeworkCompletionUi.EMPTY_LABEL, color = Muted)
+                        } else {
+                            val completedKeys = homeworkCompletions.filter { it.completed }.map { it.homeworkKey }.toSet()
+                            val progress = HomeworkProgressCalculator.calculate(dailyLessonPlan, homeworkCompletions)
+                            Text(progress.summary, color = Blue, fontWeight = FontWeight.Bold)
+                            dailyLessonPlan.homeworkClasses.forEach { lesson ->
+                                val completed = HomeworkIdentity.key(dailyLessonPlan.date, lesson) in completedKeys
+                                HomeworkItem(lesson, completed) { onHomeworkCompletion(lesson, it) }
+                            }
                         }
                     } },
                     second = { modifier -> ZoneCard("Últimas 10 atividades", "Seu caminho mais recente", modifier) {
@@ -139,6 +166,29 @@ internal fun FiveZoneHomeScreen(
                         }
                         if (history.isNotEmpty()) OutlinedButton(onClick = onHistory, modifier = Modifier.fillMaxWidth()) { Text("Ver histórico completo") }
                     } })
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeworkItem(lesson: LessonClass, completed: Boolean, onCompletedChange: (Boolean) -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = if (completed) GreenSoft else Cream),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(lesson.subject ?: "Atividade", color = if (completed) Green else Blue, fontWeight = FontWeight.Bold)
+            Text(lesson.homework.orEmpty(), fontWeight = FontWeight.SemiBold, color = if (completed) Muted else Color.Black)
+            lesson.displayContent?.let { Text(it, color = Muted) }
+            if (completed) {
+                Text(HomeworkCompletionUi.COMPLETED_LABEL, color = Green, fontWeight = FontWeight.Bold)
+                TextButton(onClick = { onCompletedChange(false) }) { Text(HomeworkCompletionUi.UNDO_LABEL) }
+            } else {
+                OutlinedButton(onClick = { onCompletedChange(true) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(HomeworkCompletionUi.PENDING_LABEL)
+                }
             }
         }
     }

@@ -72,6 +72,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -88,6 +89,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -555,6 +559,15 @@ private object MaterialQuestionGenerator {
 
 @Composable
 private fun EstudeNoahApp() {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var homeDataVersion by remember { mutableIntStateOf(0) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) homeDataVersion++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val context = androidx.compose.ui.platform.LocalContext.current
     val localPreferences = LocalPreferencesRepository(context)
     var screenName by rememberSaveable { mutableStateOf(AppScreen.HOME.name) }
@@ -665,21 +678,34 @@ private fun EstudeNoahApp() {
 
     Surface(modifier = Modifier.fillMaxSize(), color = Cream) {
         when (screen) {
-            AppScreen.HOME -> FiveZoneHomeScreen(
-                history = localPreferences.loadHistory(),
-                preparedActivity = localPreferences.loadPreparedActivity(),
-                onCreateActivity = { screenName = AppScreen.MATERIAL_INPUT.name },
-                onQuickPractice = { screenName = AppScreen.SUBJECTS.name },
-                onReview = { screenName = AppScreen.REVIEW.name },
-                onTrophies = { screenName = AppScreen.TROPHIES.name },
-                onHistory = { screenName = AppScreen.HISTORY.name },
-                onParents = { screenName = AppScreen.PARENT_PIN.name },
-                onPrepared = ::startPrepared,
-                onMaterial = {
-                    selectedHomeMaterial = it
-                    screenName = AppScreen.MATERIAL_DETAIL.name
-                }
-            )
+            AppScreen.HOME -> {
+                homeDataVersion // Reavaliado ao retornar do launcher Agenda Vieira ou ao concluir tarefa.
+                val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())
+                val dailyPlan = localPreferences.loadDailyLessonPlan(today)
+                FiveZoneHomeScreen(
+                    history = localPreferences.loadHistory(),
+                    preparedActivity = localPreferences.loadPreparedActivity(),
+                    dailyLessonPlan = dailyPlan,
+                    homeworkCompletions = localPreferences.loadHomeworkCompletions(today),
+                    onHomeworkCompletion = { lesson, completed ->
+                        dailyPlan?.let { plan ->
+                            localPreferences.setHomeworkCompletion(plan.date, lesson, completed)
+                            homeDataVersion++
+                        }
+                    },
+                    onCreateActivity = { screenName = AppScreen.MATERIAL_INPUT.name },
+                    onQuickPractice = { screenName = AppScreen.SUBJECTS.name },
+                    onReview = { screenName = AppScreen.REVIEW.name },
+                    onTrophies = { screenName = AppScreen.TROPHIES.name },
+                    onHistory = { screenName = AppScreen.HISTORY.name },
+                    onParents = { screenName = AppScreen.PARENT_PIN.name },
+                    onPrepared = ::startPrepared,
+                    onMaterial = {
+                        selectedHomeMaterial = it
+                        screenName = AppScreen.MATERIAL_DETAIL.name
+                    }
+                )
+            }
 
             AppScreen.SUBJECTS -> SubjectScreen(onBack = ::goHome, onSelect = ::startSubject)
 
