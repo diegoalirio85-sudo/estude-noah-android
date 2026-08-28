@@ -52,6 +52,14 @@ A opção **Conta do backend**, protegida pelo PIN, autentica o responsável via
 
 A interface web/Sites permanece uma evolução futura para administração e acompanhamento.
 
+## Agenda Vieira — Plano de Aula
+
+A fonte da agenda diária é a rota autenticada `#/plano-aula` do TOTVS Educacional. A coleta acontece exclusivamente na WebView do usuário já autenticado: JavaScript local lê os campos visíveis do DOM e devolve `DailyLessonPlan` com aulas estruturadas. Usuário, senha, cookies, storages e headers de autenticação não são lidos nem enviados ao backend.
+
+O plano é persistido localmente por data. Reimportar a mesma data substitui o plano anterior, sem duplicar aulas ou tarefas e sem alterar o histórico de estudos. A Home ordena as aulas pelo início, prefere `completedContent` para representar o que foi estudado e usa `plannedContent` apenas quando o realizado estiver vazio. Somente `homework` não vazio alimenta Atividades de Hoje.
+
+Importar agenda não chama Gemini. O pipeline C2.1 só deve ser acionado posteriormente por escolha explícita de um material ou atividade.
+
 ## Modelo de domínio sugerido
 Material, Theme, Activity, Item e Result.
 

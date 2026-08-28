@@ -28,7 +28,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,7 +37,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -47,15 +45,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.estudenoah.app.data.local.LocalPreferencesRepository
-import com.estudenoah.app.domain.PreparedActivity
-import com.estudenoah.app.domain.Subject
-import com.estudenoah.app.network.BackendActivityRepository
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONTokener
 import java.io.ByteArrayOutputStream
-import java.util.UUID
 
 class VieiraAgendaActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,11 +66,8 @@ private fun VieiraAgendaScreen(context: Context) {
     var currentUrl by remember { mutableStateOf(VieiraAgendaSupport.PORTAL_URL) }
     var capturedText by remember { mutableStateOf("") }
     var title by remember { mutableStateOf(VieiraAgendaSupport.defaultTitle()) }
-    var subject by remember { mutableStateOf(Subject.PORTUGUES) }
-    var status by remember { mutableStateOf("Entre no Portal do Aluno e abra Plano de Aula ou Lição de Casa.") }
-    var generating by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val backendRepository = remember { BackendActivityRepository() }
+    var capturedPlan by remember { mutableStateOf<DailyLessonPlan?>(null) }
+    var status by remember { mutableStateOf("Entre no Portal do Aluno e abra o Plano de Aula diário.") }
     val localPreferences = remember { LocalPreferencesRepository(context) }
 
     val pdfLauncher = rememberLauncherForActivityResult(
@@ -141,7 +129,7 @@ private fun VieiraAgendaScreen(context: Context) {
                                         }
                                     }
                                 }
-                                loadUrl(VieiraAgendaSupport.PORTAL_URL)
+                                loadUrl(VieiraPlanDomExtractor.PLAN_URL)
                                 webView = this
                             }
                         }
@@ -165,16 +153,17 @@ private fun VieiraAgendaScreen(context: Context) {
                                 if (view == null || !VieiraAgendaSupport.isAllowedPortalUrl(currentUrl)) {
                                     status = "Abra primeiro uma página do Portal do Aluno (ASAV)."
                                 } else {
-                                    view.evaluateJavascript(
-                                        "(function(){return document.body ? document.body.innerText : '';})()"
-                                    ) { value ->
+                                    view.evaluateJavascript(VieiraPlanDomExtractor.EXTRACTION_SCRIPT) { value ->
                                         val decoded = runCatching { JSONTokener(value).nextValue() as? String }.getOrNull().orEmpty()
-                                        val clean = VieiraAgendaSupport.cleanCapturedText(decoded)
-                                        if (clean.length < 80) {
-                                            status = "A página não trouxe conteúdo suficiente. Abra Plano de Aula ou Lição de Casa antes de capturar."
+                                        val plan = DailyLessonPlanJsonCodec.decodePlan(decoded)
+                                        if (plan == null || plan.classes.isEmpty()) {
+                                            status = "Não encontrei aulas estruturadas. Abra o Plano de Aula, confirme a data e tente novamente."
                                         } else {
-                                            capturedText = clean.take(50_000)
-                                            status = "Conteúdo capturado (${capturedText.length} caracteres). Agora você pode gerar o PDF ou as questões."
+                                            capturedPlan = plan
+                                            capturedText = plan.toPrintableText()
+                                            title = "Plano de Aula Vieira - ${plan.date.toBrazilianDate()}"
+                                            localPreferences.saveDailyLessonPlan(plan)
+                                            status = "Plano de ${plan.date.toBrazilianDate()} importado: ${plan.classes.size} aulas e ${plan.homeworkClasses.size} atividades."
                                         }
                                     }
                                 }
@@ -183,81 +172,15 @@ private fun VieiraAgendaScreen(context: Context) {
                             shape = RoundedCornerShape(14.dp)
                         ) { Text("Capturar página atual", fontWeight = FontWeight.Bold) }
 
-                        if (capturedText.isNotBlank()) {
-                            OutlinedTextField(
-                                value = title,
-                                onValueChange = { title = it.take(100) },
+                        if (capturedPlan != null) {
+                            OutlinedButton(
+                                onClick = { pdfLauncher.launch("${safeFileName(title)}.pdf") },
                                 modifier = Modifier.fillMaxWidth(),
-                                label = { Text("Título") },
-                                singleLine = true
-                            )
-
-                            Text("Matéria", fontWeight = FontWeight.Bold)
-                            Subject.entries.forEach { item ->
-                                OutlinedButton(
-                                    onClick = { subject = item },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text(if (item == subject) "✓ ${item.label}" else item.label)
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = { pdfLauncher.launch("${safeFileName(title)}.pdf") },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(14.dp)
-                                ) { Text("Salvar PDF") }
-
-                                Button(
-                                    onClick = {
-                                        if (generating) return@Button
-                                        generating = true
-                                        status = "Analisando a agenda e criando questões…"
-                                        scope.launch {
-                                            runCatching {
-                                                withContext(Dispatchers.IO) {
-                                                    backendRepository.fromText(
-                                                        sourceType = "vieira_agenda",
-                                                        title = title.ifBlank { VieiraAgendaSupport.defaultTitle() },
-                                                        subject = subject.label,
-                                                        text = capturedText
-                                                    )
-                                                }
-                                            }.onSuccess { questions ->
-                                                if (questions.isEmpty()) {
-                                                    status = "O material não forneceu informações suficientes para criar a atividade."
-                                                } else {
-                                                    localPreferences.savePreparedActivity(
-                                                        PreparedActivity(
-                                                            id = UUID.randomUUID().toString(),
-                                                            title = title.ifBlank { VieiraAgendaSupport.defaultTitle() },
-                                                            subject = subject,
-                                                            sourceText = capturedText,
-                                                            questions = questions,
-                                                            createdAt = System.currentTimeMillis()
-                                                        )
-                                                    )
-                                                    status = "Atividade criada com ${questions.size} questões e salva no Estude, Noah!."
-                                                }
-                                            }.onFailure {
-                                                status = "Não foi possível criar as questões: ${it.message ?: "erro de conexão"}"
-                                            }
-                                            generating = false
-                                        }
-                                    },
-                                    enabled = !generating,
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(14.dp)
-                                ) { Text(if (generating) "Gerando…" else "Criar questões") }
-                            }
+                                shape = RoundedCornerShape(14.dp)
+                            ) { Text("Salvar plano em PDF") }
 
                             Text(
-                                "A senha do Vieira permanece apenas na sessão do navegador. O Estude, Noah! captura somente o texto da página quando você autoriza.",
+                                "A senha e a sessão permanecem somente no navegador. A importação salva apenas data, aulas, conteúdos e lições visíveis; não envia dados ao backend nem gera questões automaticamente.",
                                 color = Color.Gray,
                                 fontSize = 12.sp
                             )
@@ -267,6 +190,24 @@ private fun VieiraAgendaScreen(context: Context) {
             }
         }
     }
+}
+
+private fun DailyLessonPlan.toPrintableText(): String = buildString {
+    appendLine("Plano de Aula - ${date.toBrazilianDate()}")
+    orderedClasses.forEach { lesson ->
+        appendLine()
+        appendLine("Aula ${lesson.lessonNumber ?: "-"} • ${lesson.startTime.orEmpty()}–${lesson.endTime.orEmpty()} • ${lesson.subject.orEmpty()}")
+        lesson.classGroup?.let { appendLine("Turma: $it") }
+        lesson.lessonType?.let { appendLine("Tipo: $it") }
+        lesson.plannedContent?.let { appendLine("Conteúdo previsto: $it") }
+        lesson.completedContent?.let { appendLine("Conteúdo realizado: $it") }
+        lesson.homework?.let { appendLine("Lição de casa: $it") }
+    }
+}.trim()
+
+private fun String.toBrazilianDate(): String {
+    val parts = split('-')
+    return if (parts.size == 3) "${parts[2]}/${parts[1]}/${parts[0]}" else this
 }
 
 private fun createAgendaPdf(title: String, text: String): ByteArray {

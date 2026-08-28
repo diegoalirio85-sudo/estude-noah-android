@@ -10,7 +10,11 @@ A Home é o ponto de partida diário do aluno em tablets. Ela organiza informaç
 4. **Atividades de hoje** — sugestões de continuidade;
 5. **Últimas 10 atividades** — dados reais do histórico local existente.
 
-Agenda, materiais e atividades do dia usam conteúdo demonstrativo isolado em `HomePreviewData`. Isso torna explícita a fronteira futura de provider/sincronização e impede que mocks sejam confundidos com dados persistidos.
+Materiais de hoje ainda usa conteúdo demonstrativo isolado em `HomePreviewData`. Agenda e atividades do dia passam a consumir o `DailyLessonPlan` persistido quando o responsável importa uma data no Agenda Vieira.
+
+Quando existir um Plano de Aula Vieira importado para a data atual, **Agenda de Hoje** mostra horário, disciplina e conteúdo realizado, em ordem cronológica; se o realizado estiver vazio, usa o previsto. **Atividades de Hoje** mostra exclusivamente aulas com Lição de Casa não vazia. A ausência de lição nunca produz tarefa artificial.
+
+A importação é estrutural e local. Ela não gera questões automaticamente nem envia a sessão TOTVS ao backend.
 
 ## Responsividade
 

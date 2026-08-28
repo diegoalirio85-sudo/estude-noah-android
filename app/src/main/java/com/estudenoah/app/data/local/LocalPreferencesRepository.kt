@@ -6,6 +6,9 @@ import com.estudenoah.app.domain.HistoryEntry
 import com.estudenoah.app.domain.PreparedActivity
 import com.estudenoah.app.domain.Question
 import com.estudenoah.app.domain.Subject
+import com.estudenoah.app.vieira.DailyLessonPlan
+import com.estudenoah.app.vieira.DailyLessonPlanHistory
+import com.estudenoah.app.vieira.DailyLessonPlanJsonCodec
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -154,6 +157,21 @@ internal class LocalPreferencesRepository(context: Context) {
     fun clearHistory() {
         preferences.edit()
             .remove(LocalPersistenceContract.HISTORY_KEY)
+            .apply()
+    }
+
+    fun loadDailyLessonPlans(): List<DailyLessonPlan> {
+        val raw = preferences.getString(LocalPersistenceContract.DAILY_LESSON_PLANS_KEY, "[]") ?: "[]"
+        return DailyLessonPlanJsonCodec.decodePlans(raw)
+    }
+
+    fun loadDailyLessonPlan(date: String): DailyLessonPlan? =
+        loadDailyLessonPlans().firstOrNull { it.date == date }
+
+    fun saveDailyLessonPlan(plan: DailyLessonPlan) {
+        val updated = DailyLessonPlanHistory.upsert(loadDailyLessonPlans(), plan)
+        preferences.edit()
+            .putString(LocalPersistenceContract.DAILY_LESSON_PLANS_KEY, DailyLessonPlanJsonCodec.encodePlans(updated))
             .apply()
     }
 

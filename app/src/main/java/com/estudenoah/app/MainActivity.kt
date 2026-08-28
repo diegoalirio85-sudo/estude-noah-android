@@ -72,6 +72,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -88,6 +89,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -555,6 +559,15 @@ private object MaterialQuestionGenerator {
 
 @Composable
 private fun EstudeNoahApp() {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var homeDataVersion by remember { mutableIntStateOf(0) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) homeDataVersion++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val context = androidx.compose.ui.platform.LocalContext.current
     val localPreferences = LocalPreferencesRepository(context)
     var screenName by rememberSaveable { mutableStateOf(AppScreen.HOME.name) }
@@ -666,8 +679,12 @@ private fun EstudeNoahApp() {
     Surface(modifier = Modifier.fillMaxSize(), color = Cream) {
         when (screen) {
             AppScreen.HOME -> FiveZoneHomeScreen(
+                // Reavaliado ao retornar do launcher Agenda Vieira.
                 history = localPreferences.loadHistory(),
                 preparedActivity = localPreferences.loadPreparedActivity(),
+                dailyLessonPlan = localPreferences.loadDailyLessonPlan(
+                    java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())
+                ).also { homeDataVersion },
                 onCreateActivity = { screenName = AppScreen.MATERIAL_INPUT.name },
                 onQuickPractice = { screenName = AppScreen.SUBJECTS.name },
                 onReview = { screenName = AppScreen.REVIEW.name },
