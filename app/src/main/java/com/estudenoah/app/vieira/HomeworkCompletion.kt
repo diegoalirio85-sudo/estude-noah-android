@@ -12,6 +12,7 @@ internal data class HomeworkCompletion(
     val date: String,
     val subject: String?,
     val lessonNumber: Int?,
+    val lessonKey: String,
     val homeworkKey: String,
     val completed: Boolean,
     val completedAt: Long?,
@@ -19,6 +20,16 @@ internal data class HomeworkCompletion(
 )
 
 internal object HomeworkIdentity {
+    fun lessonKey(date: String, lesson: LessonClass): String = hash(
+        listOf(
+            date,
+            lesson.subject.orEmpty(),
+            lesson.lessonNumber?.toString().orEmpty(),
+            lesson.classGroup.orEmpty(),
+            lesson.startTime.orEmpty()
+        ).joinToString("|") { normalize(it) }
+    )
+
     fun key(date: String, lesson: LessonClass): String {
         val stableContent = listOf(
             date,
@@ -28,10 +39,12 @@ internal object HomeworkIdentity {
             lesson.startTime.orEmpty(),
             lesson.homework.orEmpty()
         ).joinToString("|") { normalize(it) }
-        return MessageDigest.getInstance("SHA-256")
-            .digest(stableContent.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+        return hash(stableContent)
     }
+
+    private fun hash(value: String): String = MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 
     private fun normalize(value: String): String = value
         .trim()
@@ -54,6 +67,7 @@ internal object HomeworkCompletionHistory {
             date = date,
             subject = lesson.subject,
             lessonNumber = lesson.lessonNumber,
+            lessonKey = HomeworkIdentity.lessonKey(date, lesson),
             homeworkKey = key,
             completed = completed,
             completedAt = when {
@@ -65,6 +79,13 @@ internal object HomeworkCompletionHistory {
         )
         return existing.filterNot { it.homeworkKey == key } + updated
     }
+}
+
+internal object HomeworkCompletionUi {
+    const val PENDING_LABEL = "[ ] Marcar como feita"
+    const val COMPLETED_LABEL = "[✓] Concluída"
+    const val UNDO_LABEL = "Desfazer"
+    const val EMPTY_LABEL = "Não há atividades de casa registradas para hoje."
 }
 
 internal data class HomeworkProgress(val completed: Int, val total: Int) {

@@ -10,6 +10,7 @@ internal object HomeworkCompletionJsonCodec {
                 put("date", item.date)
                 item.subject?.let { put("subject", it) }
                 item.lessonNumber?.let { put("lessonNumber", it) }
+                put("lessonKey", item.lessonKey)
                 put("homeworkKey", item.homeworkKey)
                 put("completed", item.completed)
                 item.completedAt?.let { put("completedAt", it) }
@@ -30,6 +31,7 @@ internal object HomeworkCompletionJsonCodec {
                         date = date,
                         subject = item.optString("subject").takeIf { it.isNotBlank() },
                         lessonNumber = item.optInt("lessonNumber", -1).takeIf { it >= 0 },
+                        lessonKey = item.optString("lessonKey").takeIf { it.isNotBlank() } ?: "legacy:$key",
                         homeworkKey = key,
                         completed = item.optBoolean("completed", false),
                         completedAt = item.optLong("completedAt", -1L).takeIf { it >= 0L },

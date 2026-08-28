@@ -33,6 +33,7 @@ import com.estudenoah.app.domain.PreparedActivity
 import com.estudenoah.app.youtube.YoutubePlaybackLauncher
 import com.estudenoah.app.vieira.DailyLessonPlan
 import com.estudenoah.app.vieira.HomeworkCompletion
+import com.estudenoah.app.vieira.HomeworkCompletionUi
 import com.estudenoah.app.vieira.HomeworkIdentity
 import com.estudenoah.app.vieira.HomeworkProgressCalculator
 import com.estudenoah.app.vieira.LessonClass
@@ -147,7 +148,7 @@ internal fun FiveZoneHomeScreen(
                 ResponsivePair(wide,
                     first = { modifier -> ZoneCard("Atividades de hoje", "Sugestões prontas para continuar", modifier) {
                         if (dailyLessonPlan == null || dailyLessonPlan.homeworkClasses.isEmpty()) {
-                            Text("Não há atividades de casa registradas para hoje.", color = Muted)
+                            Text(HomeworkCompletionUi.EMPTY_LABEL, color = Muted)
                         } else {
                             val completedKeys = homeworkCompletions.filter { it.completed }.map { it.homeworkKey }.toSet()
                             val progress = HomeworkProgressCalculator.calculate(dailyLessonPlan, homeworkCompletions)
@@ -182,11 +183,11 @@ private fun HomeworkItem(lesson: LessonClass, completed: Boolean, onCompletedCha
             Text(lesson.homework.orEmpty(), fontWeight = FontWeight.SemiBold, color = if (completed) Muted else Color.Black)
             lesson.displayContent?.let { Text(it, color = Muted) }
             if (completed) {
-                Text("✓ Concluída", color = Green, fontWeight = FontWeight.Bold)
-                TextButton(onClick = { onCompletedChange(false) }) { Text("Desfazer") }
+                Text(HomeworkCompletionUi.COMPLETED_LABEL, color = Green, fontWeight = FontWeight.Bold)
+                TextButton(onClick = { onCompletedChange(false) }) { Text(HomeworkCompletionUi.UNDO_LABEL) }
             } else {
                 OutlinedButton(onClick = { onCompletedChange(true) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("☐ Marcar como feita")
+                    Text(HomeworkCompletionUi.PENDING_LABEL)
                 }
             }
         }

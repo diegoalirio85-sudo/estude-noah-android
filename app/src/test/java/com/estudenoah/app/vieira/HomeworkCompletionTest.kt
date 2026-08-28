@@ -13,11 +13,19 @@ class HomeworkCompletionTest {
     private val noHomework = LessonClass(3, "Inglês", "4º Ano", "Aula", "09:10", "10:00", "Vocabulary", "Food", null)
     private val date = "2026-08-28"
 
+    @Test fun homeworkStartsPendingWithRequiredLabel() {
+        val progress = HomeworkProgressCalculator.calculate(DailyLessonPlan(date, listOf(math)), emptyList())
+        assertEquals(0, progress.completed)
+        assertEquals("[ ] Marcar como feita", HomeworkCompletionUi.PENDING_LABEL)
+    }
+
     @Test fun marksHomeworkAsCompletedManually() {
         val item = HomeworkCompletionHistory.set(emptyList(), date, math, true, 123L).single()
         assertTrue(item.completed)
         assertEquals(123L, item.completedAt)
         assertEquals(HomeworkCompletionSource.MANUAL, item.completionSource)
+        assertEquals(HomeworkIdentity.lessonKey(date, math), item.lessonKey)
+        assertEquals("[✓] Concluída", HomeworkCompletionUi.COMPLETED_LABEL)
     }
 
     @Test fun undoKeepsTaskButClearsCompletionTimestamp() {
@@ -30,6 +38,14 @@ class HomeworkCompletionTest {
     @Test fun codecPersistsCompletionAcrossAppReopen() {
         val before = HomeworkCompletionHistory.set(emptyList(), date, math, true, 123L)
         assertEquals(before, HomeworkCompletionJsonCodec.decode(HomeworkCompletionJsonCodec.encode(before)))
+    }
+
+    @Test fun codecReadsCompletionWrittenBeforeLessonKeyWasIntroduced() {
+        val key = HomeworkIdentity.key(date, math)
+        val legacy = """[{"date":"$date","subject":"Matemática","lessonNumber":2,"homeworkKey":"$key","completed":true,"completedAt":123,"completionSource":"MANUAL"}]"""
+        val restored = HomeworkCompletionJsonCodec.decode(legacy).single()
+        assertTrue(restored.completed)
+        assertEquals("legacy:$key", restored.lessonKey)
     }
 
     @Test fun reimportingSamePlanPreservesCompletionIdentity() {
@@ -48,6 +64,7 @@ class HomeworkCompletionTest {
 
     @Test fun differentTasksNeverShareState() {
         assertNotEquals(HomeworkIdentity.key(date, math), HomeworkIdentity.key(date, portuguese))
+        assertNotEquals(HomeworkIdentity.lessonKey(date, math), HomeworkIdentity.lessonKey(date, portuguese))
     }
 
     @Test fun progressCountsCompletedOverRealHomeworkOnly() {
